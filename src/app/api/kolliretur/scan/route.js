@@ -1,1 +1,1 @@
-export { POST, config } from '@/modules/kolliretur/api/scan/route'
+export { POST } from '@/modules/kolliretur/api/scan/route'
