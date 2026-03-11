@@ -1,0 +1,18 @@
+{
+    "functions": {
+        "src/app/api/kolliretur/scan/route.js": {
+            "maxDuration": 30,
+            "memory": 1024
+        }
+    },
+    "crons": [
+        {
+            "path": "/api/reports/weekly",
+            "schedule": "0 7 * * 1"
+        },
+        {
+            "path": "/api/reports/monthly",
+            "schedule": "0 7 1 * *"
+        }
+    ]
+}

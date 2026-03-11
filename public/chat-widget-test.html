@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="no">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Elesco Chat Widget Test</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, #4a7c4e 0%, #2d5a30 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .container {
+            max-width: 760px;
+            width: 100%;
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+        h1 { color: #2d3748; margin-bottom: 10px; font-size: 2rem; }
+        .subtitle { color: #718096; margin-bottom: 30px; font-size: 1rem; }
+        .info-box {
+            background: linear-gradient(135deg, #5C9D5C 0%, #3d7040 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 12px;
+            margin-bottom: 24px;
+        }
+        .info-box h2 { margin-bottom: 8px; font-size: 1.2rem; }
+        .info-box p { line-height: 1.6; opacity: 0.95; font-size: 0.95rem; }
+        .section {
+            background: #f7fafc;
+            padding: 20px;
+            border-radius: 12px;
+            margin-bottom: 16px;
+        }
+        .section h3 { color: #2d3748; margin-bottom: 12px; font-size: 1.05rem; }
+        .section ul { list-style-position: inside; color: #4a5568; line-height: 1.9; }
+        code {
+            background: #2d3748;
+            color: #48bb78;
+            padding: 2px 7px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.88rem;
+        }
+        pre.snippet {
+            background: #1a202c;
+            color: #a0aec0;
+            padding: 20px;
+            border-radius: 12px;
+            font-size: 0.82rem;
+            line-height: 1.7;
+            overflow-x: auto;
+            margin-top: 12px;
+        }
+        pre.snippet .hl { color: #68d391; }
+        .footer {
+            text-align: center;
+            color: #718096;
+            margin-top: 28px;
+            padding-top: 20px;
+            border-top: 2px solid #e2e8f0;
+            font-size: 0.9rem;
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>🎯 Elesco Chat Widget Test</h1>
+    <p class="subtitle">Lokal testside — widgeten åpner automatisk etter 5 sekunder</p>
+
+    <div class="info-box">
+        <h2>✅ Chat Widget er Aktiv</h2>
+        <p>Chat-widgeten vises som en boble i nedre høyre hjørne og åpner automatisk etter 5 sek. Klikk × for å lukke – boblen kommer tilbake.</p>
+    </div>
+
+    <div class="section">
+        <h3>📋 Slik fungerer det nå</h3>
+        <ul>
+            <li>Boble vises i nedre høyre hjørne ved sideinnlasting</li>
+            <li>Tooltip «Hei 👋 Hva kan jeg hjelpe deg med?» vises i 6 sek</li>
+            <li>Chatvinduet åpner <strong>automatisk</strong> etter 5 sekunder</li>
+            <li>Klikk <strong>×</strong> for å lukke → boblen dukker opp igjen</li>
+            <li>Klikk boblen for å åpne chatvinduet på nytt</li>
+        </ul>
+    </div>
+
+    <div class="section">
+        <h3>🔗 WordPress-snippet (lim inn i footer)</h3>
+        <pre class="snippet"><span class="hl">&lt;!-- Elesco Trondheim Chat Widget --&gt;</span>
+&lt;script src="https://kundeservice.helkrypt.no/elesco-chat.js" defer&gt;&lt;/script&gt;</pre>
+    </div>
+
+    <div class="footer">
+        <p><strong>Elesco Trondheim</strong> | Kundeservice Dashboard</p>
+        <p style="margin-top:8px;">Testmiljø: <code>http://localhost:3000</code></p>
+    </div>
+</div>
+
+<!-- ===== LOCAL DEV EMBED SCRIPT ===== -->
+<script>
+(function () {
+  var CHAT_URL = 'http://localhost:3000/chat-widget';
+  var AUTO_OPEN_DELAY = 5000;
+  var BUBBLE_COLOR = '#5C9D5C';
+  var BUBBLE_SIZE = 64;
+  var CHAT_WIDTH = 400;
+  var CHAT_HEIGHT = 600;
+  var CHAT_BOTTOM = 24;
+  var CHAT_RIGHT = 24;
+  var isOpen = false;
+
+  var style = document.createElement('style');
+  style.textContent = [
+    '#elesco-chat-bubble{position:fixed;bottom:'+CHAT_BOTTOM+'px;right:'+CHAT_RIGHT+'px;',
+    'width:'+BUBBLE_SIZE+'px;height:'+BUBBLE_SIZE+'px;background:'+BUBBLE_COLOR+';',
+    'border-radius:50%;display:flex;align-items:center;justify-content:center;',
+    'cursor:pointer;box-shadow:0 6px 24px rgba(0,0,0,0.25);z-index:2147483646;',
+    'transition:transform 0.25s cubic-bezier(0.34,1.56,0.64,1),box-shadow 0.25s,opacity 0.2s;',
+    'user-select:none;}',
+    '#elesco-chat-bubble:hover{transform:scale(1.08);box-shadow:0 10px 32px rgba(0,0,0,0.3);}',
+    '#elesco-chat-bubble.elesco-hidden{opacity:0;pointer-events:none;transform:scale(0.6);}',
+    '#elesco-chat-bubble svg{width:30px;height:30px;fill:none;stroke:#fff;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;}',
+    '#elesco-chat-tooltip{position:fixed;bottom:'+(CHAT_BOTTOM+BUBBLE_SIZE+12)+'px;right:'+CHAT_RIGHT+'px;',
+    'background:#fff;color:#1c1c1c;padding:10px 16px;border-radius:12px;font-size:14px;',
+    'font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;',
+    'box-shadow:0 4px 20px rgba(0,0,0,0.15);z-index:2147483645;cursor:pointer;',
+    'transition:opacity 0.3s,transform 0.3s;white-space:nowrap;}',
+    '#elesco-chat-tooltip::after{content:"";position:absolute;bottom:-7px;right:22px;',
+    'width:14px;height:14px;background:#fff;transform:rotate(45deg);',
+    'box-shadow:3px 3px 6px rgba(0,0,0,0.08);}',
+    '#elesco-chat-tooltip.elesco-hidden{opacity:0;pointer-events:none;transform:translateY(6px);}',
+    '#elesco-chat-iframe-wrap{position:fixed;bottom:'+(CHAT_BOTTOM+BUBBLE_SIZE+16)+'px;right:'+CHAT_RIGHT+'px;',
+    'width:'+CHAT_WIDTH+'px;height:'+CHAT_HEIGHT+'px;z-index:2147483647;border-radius:16px;overflow:hidden;',
+    'box-shadow:0 16px 56px rgba(0,0,0,0.28);transition:transform 0.35s cubic-bezier(0.34,1.25,0.64,1),opacity 0.3s;',
+    'transform-origin:bottom right;}',
+    '#elesco-chat-iframe-wrap.elesco-hidden{opacity:0;pointer-events:none;transform:scale(0.85) translateY(20px);}',
+    '#elesco-chat-iframe-wrap iframe{width:100%;height:100%;border:none;display:block;background:transparent;color-scheme:light;}',
+    '@media(max-width:480px){#elesco-chat-iframe-wrap{bottom:0!important;right:0!important;width:100vw!important;height:100dvh!important;border-radius:0!important;}}',
+  ].join('');
+  document.head.appendChild(style);
+
+  var bubble = document.createElement('div');
+  bubble.id = 'elesco-chat-bubble';
+  bubble.innerHTML = '<svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
+  document.body.appendChild(bubble);
+
+  var tooltip = document.createElement('div');
+  tooltip.id = 'elesco-chat-tooltip';
+  tooltip.textContent = 'Hei 👋 Hva kan jeg hjelpe deg med?';
+  document.body.appendChild(tooltip);
+
+  var wrap = document.createElement('div');
+  wrap.id = 'elesco-chat-iframe-wrap';
+  wrap.classList.add('elesco-hidden');
+  var iframe = document.createElement('iframe');
+  iframe.src = CHAT_URL;
+  iframe.title = 'Elesco Trondheim Chat';
+  wrap.appendChild(iframe);
+  document.body.appendChild(wrap);
+
+  function openChat() {
+    isOpen = true;
+    wrap.classList.remove('elesco-hidden');
+    bubble.classList.add('elesco-hidden');
+    hideTooltip();
+  }
+  function closeChat() {
+    isOpen = false;
+    wrap.classList.add('elesco-hidden');
+    bubble.classList.remove('elesco-hidden');
+  }
+
+  var ttTimer;
+  function showTooltip() { tooltip.classList.remove('elesco-hidden'); }
+  function hideTooltip() { tooltip.classList.add('elesco-hidden'); clearTimeout(ttTimer); }
+
+  showTooltip();
+  ttTimer = setTimeout(function(){ if(!isOpen) hideTooltip(); }, 6000);
+
+  bubble.addEventListener('click', function(){ if(!isOpen) openChat(); });
+  tooltip.addEventListener('click', function(){ if(!isOpen) openChat(); });
+
+  window.addEventListener('message', function(e) {
+    if (!e.data || typeof e.data !== 'object') return;
+    if (e.data.type === 'elesco-close') closeChat();
+    if (e.data.type === 'elesco-open') openChat();
+  });
+
+  setTimeout(function(){ if(!isOpen){ hideTooltip(); openChat(); } }, AUTO_OPEN_DELAY);
+})();
+</script>
+</body>
+</html>
