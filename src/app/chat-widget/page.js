@@ -6,6 +6,12 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
 export default function ChatWidget() {
+    // Les client_id fra URL — satt av embed-scriptet via iframe src ?client=...
+    const [clientId] = useState(() => {
+        if (typeof window === 'undefined') return 'elesco-trondheim'
+        return new URLSearchParams(window.location.search).get('client') || 'elesco-trondheim'
+    })
+
     const [messages, setMessages] = useState([]);
     const [inputValue, setInputValue] = useState('');
     const [isLoading, setIsLoading] = useState(false);
@@ -73,7 +79,7 @@ export default function ChatWidget() {
             // Valid existing session → load messages from DB
             if (savedConvId) {
                 try {
-                    const res = await fetch(`/api/messages?conversation_id=${savedConvId}`);
+                    const res = await fetch(`/api/messages?conversation_id=${savedConvId}&client=${clientId}`);
                     if (res.ok) {
                         const data = await res.json();
                         if (data.length > 0) {
@@ -134,7 +140,7 @@ export default function ChatWidget() {
                 const convRes = await fetch('/api/conversations', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ visitor_name: 'Gjest' })
+                    body: JSON.stringify({ visitor_name: 'Gjest', client_id: clientId })
                 });
                 if (convRes.ok) {
                     const convData = await convRes.json();
@@ -149,7 +155,8 @@ export default function ChatWidget() {
                         body: JSON.stringify({
                             conversation_id: activeConvId,
                             role: 'assistant',
-                            content: WELCOME_MSG.content
+                            content: WELCOME_MSG.content,
+                            client_id: clientId
                         })
                     });
                 }
@@ -164,12 +171,13 @@ export default function ChatWidget() {
                         conversation_id: activeConvId,
                         role: 'user',
                         content: userMessage.content,
-                        file_url: userMessage.file_url
+                        file_url: userMessage.file_url,
+                        client_id: clientId
                     })
                 });
             }
 
-            const response = await fetch('/api/chat', {
+            const response = await fetch(`/api/chat?client=${clientId}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -198,7 +206,8 @@ export default function ChatWidget() {
                         body: JSON.stringify({
                             conversation_id: activeConvId,
                             role: 'assistant',
-                            content: assistantMessage.content
+                            content: assistantMessage.content,
+                            client_id: clientId
                         })
                     });
                 }

@@ -5,13 +5,18 @@
     if (window.__elescoLoaded) return;
     window.__elescoLoaded = true;
 
-    /* ─── CONFIG ──────────────────────────────────────────────────────────────── */
-    var CHAT_URL = 'https://elesco-trondheim.vercel.app/chat-widget';
+    /* ─── CONFIG — les fra script-tag attributter ─────────────────────────────── */
+    var _script     = document.currentScript;
+    var _clientId   = (_script && _script.getAttribute('data-client'))  || 'elesco-trondheim';
+    var _chatTitle  = (_script && _script.getAttribute('data-title'))   || 'Kundeservice';
+    var _baseUrl    = (_script && _script.getAttribute('data-url'))     || 'https://elesco-trondheim.vercel.app';
+
+    var CHAT_URL        = _baseUrl + '/chat-widget?client=' + _clientId;
     var AUTO_OPEN_DELAY = 5000;   // ms — desktop only
-    var BUBBLE_COLOR = '#5C9D5C';
-    var BUBBLE_SIZE = 64;     // px
-    var CHAT_BOTTOM = 24;     // px from bottom (desktop)
-    var CHAT_RIGHT = 24;     // px from right  (desktop)
+    var BUBBLE_COLOR    = '#5C9D5C';
+    var BUBBLE_SIZE     = 64;     // px
+    var CHAT_BOTTOM     = 24;     // px from bottom (desktop)
+    var CHAT_RIGHT      = 24;     // px from right  (desktop)
 
     /* ─── INIT: wait for DOM to be ready ─────────────────────────────────────── */
     function init() {
@@ -145,7 +150,7 @@
         /* ── TOOLTIP ────────────────────────────────────────────────────────── */
         var tooltip = document.createElement('div');
         tooltip.id = 'elesco-chat-tooltip';
-        tooltip.textContent = 'Hei 👋 Hva kan jeg hjelpe deg med?';
+        tooltip.textContent = 'Hei 👋 ' + _chatTitle + ' — Hva kan jeg hjelpe deg med?';
         document.body.appendChild(tooltip);
 
         /* ── IFRAME WRAPPER ─────────────────────────────────────────────────── */
@@ -155,7 +160,7 @@
 
         var iframe = document.createElement('iframe');
         iframe.src = CHAT_URL;
-        iframe.title = 'Elesco Trondheim Chat';
+        iframe.title = _chatTitle + ' Chat';
         iframe.setAttribute('allow', 'clipboard-write');
         iframe.setAttribute('loading', 'lazy');
         wrap.appendChild(iframe);

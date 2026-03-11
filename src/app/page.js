@@ -31,7 +31,16 @@ export default function DashboardPage() {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) {
       router.push('/login')
+      return
     }
+    // Redirect sysadmin to admin panel, other users to their client dashboard
+    const { data: profile } = await supabase.from('profiles').select('role, client_id').eq('id', user.id).single()
+    if (profile?.role === 'sysadmin') {
+      router.push('/admin')
+    } else if (profile?.client_id) {
+      router.push(`/dashboard/${profile.client_id}`)
+    }
+    // Fall through to show legacy dashboard for users without client_id (e.g. Elesco admin)
   }
 
   // Helper to get YYYY-MM-DD in local time

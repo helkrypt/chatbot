@@ -1,8 +1,7 @@
 import { NextResponse } from 'next/server';
 import OpenAI from 'openai';
 import { createClient } from '@supabase/supabase-js';
-import { readFileSync } from 'fs';
-import { join } from 'path';
+import { notifyClientWebhook } from '@/lib/webhook';
 
 // Rate limiting (in-memory, per IP)
 const rateLimitMap = new Map()
@@ -38,14 +37,13 @@ const supabase = createClient(
 );
 
 // Helper: Send Admin Notification
-async function sendAdminNotification(inquiry) {
+async function sendAdminNotification(inquiry, webhookUrl) {
     try {
         console.log('Attempting to send admin notification for inquiry:', inquiry.id);
 
-        // 1. Try n8n Webhook (Simplest and most robust for Vercel/AWS)
-        const n8nWebhookUrl = process.env.N8N_NOTIFICATION_WEBHOOK_URL;
+        const n8nWebhookUrl = webhookUrl || process.env.N8N_NOTIFICATION_WEBHOOK_URL;
         if (!n8nWebhookUrl) {
-            console.warn('N8N_NOTIFICATION_WEBHOOK_URL ikke satt — admin-varsling deaktivert');
+            console.warn('Ingen webhook_url konfigurert for klient — admin-varsling deaktivert');
             return;
         }
 
@@ -138,15 +136,46 @@ function extractCustomerInfoFromMessages(userMessages) {
     return info;
 }
 
-// Load System Prompt from file
-const systemPromptPath = join(process.cwd(), 'src', 'systemprompt.md');
-const systemPrompt = readFileSync(systemPromptPath, 'utf-8');
-
 export async function POST(request) {
     try {
         const ip = request.headers.get('x-forwarded-for') || 'unknown'
         if (isRateLimited(ip)) {
             return NextResponse.json({ error: 'For mange forespørsler' }, { status: 429 })
+        }
+
+        // ── Multi-tenant: les client_id fra header eller query param ──
+        const { searchParams } = new URL(request.url)
+        const clientId = request.headers.get('x-client-id') || searchParams.get('client')
+
+        if (!clientId) {
+            return NextResponse.json({ error: 'Missing client' }, { status: 400 })
+        }
+
+        // Hent klientkonfig
+        const { data: client, error: clientError } = await supabase
+            .from('clients')
+            .select('id, active, webhook_url, chatbot_title')
+            .eq('id', clientId)
+            .single()
+
+        if (clientError || !client) {
+            return NextResponse.json({ error: 'Client not found' }, { status: 404 })
+        }
+
+        if (!client.active) {
+            return NextResponse.json({ error: 'Client inactive' }, { status: 403 })
+        }
+
+        // Hent system prompt fra DB
+        const { data: promptRow, error: promptError } = await supabase
+            .from('system_prompts')
+            .select('content')
+            .eq('client_id', clientId)
+            .eq('active', true)
+            .single()
+
+        if (promptError || !promptRow) {
+            return NextResponse.json({ error: 'System prompt not found for client' }, { status: 500 })
         }
 
         const { message, conversationId, fileUrl } = await request.json();
@@ -195,10 +224,11 @@ export async function POST(request) {
         if (message) currentContent.push({ type: 'text', text: message });
         if (fileUrl) currentContent.push({ type: 'image_url', image_url: { url: fileUrl } });
 
-        // Fetch Opening Hours for the prompt
+        // Fetch Opening Hours for the prompt (filtrert på klient)
         const { data: hoursData } = await supabase
             .from('opening_hours')
             .select('*')
+            .eq('client_id', clientId)
             .order('category', { ascending: true })
             .order('sort_order', { ascending: true });
 
@@ -232,7 +262,7 @@ export async function POST(request) {
             hoursText = "Se nettsiden for oppdaterte åpningstider.";
         }
 
-        const dynamicSystemPrompt = systemPrompt.replace('[[OPENING_HOURS]]', hoursText);
+        const dynamicSystemPrompt = promptRow.content.replace('[[OPENING_HOURS]]', hoursText);
 
         // Construct Messages for OpenAI
         const apiMessages = [
@@ -332,6 +362,7 @@ export async function POST(request) {
                     .from('inquiries')
                     .insert({
                         conversation_id: conversationId,
+                        client_id: clientId,
                         customer_name: customer.name || 'Ukjent',
                         customer_email: customer.email,
                         customer_phone: customer.phone,
@@ -349,7 +380,13 @@ export async function POST(request) {
                     console.error('Failed to create inquiry:', inquiryError);
                 } else if (inquiryData) {
                     console.log('Inquiry created successfully:', inquiryData.id);
-                    await sendAdminNotification(inquiryData);
+                    await sendAdminNotification(inquiryData, client.webhook_url);
+                    await notifyClientWebhook(client, 'ticket.created', {
+                        ticketId: inquiryData.id,
+                        summary: inquiryData.subject,
+                        customerEmail: inquiryData.customer_email,
+                        conversationId,
+                    });
                 }
             }
         }

@@ -8,9 +8,8 @@ const supabase = createClient(
 
 export async function POST(request) {
     try {
-        const { visitor_name, visitor_email, visitor_phone, visitor_address, status = 'active' } = await request.json();
+        const { visitor_name, visitor_email, visitor_phone, visitor_address, status = 'active', client_id } = await request.json();
 
-        // Create new conversation using schema fields: visitor_name, visitor_email, visitor_phone, visitor_address
         const { data, error } = await supabase
             .from('conversations')
             .insert([
@@ -20,6 +19,7 @@ export async function POST(request) {
                     visitor_phone,
                     visitor_address,
                     status,
+                    client_id: client_id || null,
                     created_at: new Date().toISOString(),
                     updated_at: new Date().toISOString()
                 }

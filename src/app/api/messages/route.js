@@ -8,7 +8,7 @@ const supabase = createClient(
 
 export async function POST(request) {
     try {
-        const { conversation_id, role, content, file_url } = await request.json();
+        const { conversation_id, role, content, file_url, client_id } = await request.json();
 
         if (!conversation_id || !role || !content) {
             return NextResponse.json(
@@ -25,6 +25,7 @@ export async function POST(request) {
                     role,
                     content,
                     file_url,
+                    client_id: client_id || null,
                     created_at: new Date().toISOString()
                 }
             ])
