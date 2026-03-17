@@ -134,61 +134,26 @@ export default function ChatWidget() {
         setMessages(prev => [...prev, userMessage]);
 
         try {
-            // --- Lazy conversation creation ---
-            let activeConvId = conversationId;
-            if (!activeConvId) {
-                const convRes = await fetch('/api/conversations', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ visitor_name: 'Gjest', client_id: clientId })
-                });
-                if (convRes.ok) {
-                    const convData = await convRes.json();
-                    activeConvId = convData.id;
-                    setConversationId(activeConvId);
-                    localStorage.setItem('elesco_conv_id', activeConvId);
-
-                    // Save welcome message to DB now that we have a conversation
-                    await fetch('/api/messages', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            conversation_id: activeConvId,
-                            role: 'assistant',
-                            content: WELCOME_MSG.content,
-                            client_id: clientId
-                        })
-                    });
-                }
-            }
-
-            // Save user message
-            if (activeConvId) {
-                await fetch('/api/messages', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        conversation_id: activeConvId,
-                        role: 'user',
-                        content: userMessage.content,
-                        file_url: userMessage.file_url,
-                        client_id: clientId
-                    })
-                });
-            }
-
+            // Chat-APIet håndterer samtale-oppretting og meldingslagring atomisk
             const response = await fetch(`/api/chat?client=${clientId}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     message: currentInput,
                     fileUrl: currentFile?.url,
-                    conversationId: activeConvId
+                    conversationId: conversationId || null
                 })
             });
 
             if (response.ok) {
                 const data = await response.json();
+
+                // Oppdater conversationId hvis vi fikk en ny (første melding)
+                if (data.conversationId && !conversationId) {
+                    setConversationId(data.conversationId);
+                    localStorage.setItem('elesco_conv_id', data.conversationId);
+                }
+
                 const assistantMessage = {
                     id: (Date.now() + 1).toString(),
                     role: 'assistant',
@@ -198,19 +163,6 @@ export default function ChatWidget() {
 
                 setMessages(prev => [...prev, assistantMessage]);
                 updateLastActivity();
-
-                if (activeConvId) {
-                    await fetch('/api/messages', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            conversation_id: activeConvId,
-                            role: 'assistant',
-                            content: assistantMessage.content,
-                            client_id: clientId
-                        })
-                    });
-                }
             }
         } catch (error) {
             console.error('Error sending message:', error);

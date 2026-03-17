@@ -1,6 +1,6 @@
 {
     "functions": {
-        "src/app/api/kolliretur/scan/route.js": {
+        "src/modules/kolliretur/api/scan/route.js": {
             "maxDuration": 30,
             "memory": 1024
         }

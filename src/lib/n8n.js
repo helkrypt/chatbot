@@ -43,8 +43,8 @@ async function callN8nWebhook(path, payload) {
  * Send e-post via n8n
  * Workflow: helkrypt-send-email (GS8K2edUoevOI7pI)
  */
-export async function sendEmail({ to, subject, body, replyTo }) {
-  return callN8nWebhook('send-email', { to, subject, body, replyTo });
+export async function sendEmail({ to, subject, body, html, from, replyTo, clientId, attachments }) {
+  return callN8nWebhook('send-email', { to, subject, body, html, from, replyTo, clientId, attachments });
 }
 
 /**
