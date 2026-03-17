@@ -1,8 +1,12 @@
 import Stripe from 'stripe'
 
-export const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
-  apiVersion: '2024-06-20',
-})
+let _stripe = null
+export function getStripe() {
+  if (!_stripe) {
+    _stripe = new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: '2024-06-20' })
+  }
+  return _stripe
+}
 
 /**
  * Mapper Stripe product metadata til Helkrypt plan-navn
@@ -30,7 +34,7 @@ export function generateClientSlug(name) {
  * Kaster feil hvis signaturen er ugyldig
  */
 export function constructWebhookEvent(rawBody, signature) {
-  return stripe.webhooks.constructEvent(
+  return getStripe().webhooks.constructEvent(
     rawBody,
     signature,
     process.env.STRIPE_WEBHOOK_SECRET

@@ -2,11 +2,6 @@ import { constructWebhookEvent, mapStripePlanToHelkrypt, generateClientSlug } fr
 import { createAdminClient } from '@/lib/supabase-admin'
 import { triggerClientOnboarding, notifyAdmin, sendEmail } from '@/lib/n8n'
 
-// Viktig: Next.js App Router krever raw body for Stripe webhook-validering
-export const config = {
-  api: { bodyParser: false },
-}
-
 export async function POST(req) {
   const rawBody = await req.text()
   const signature = req.headers.get('stripe-signature')
