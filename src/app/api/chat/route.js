@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
-import Anthropic from '@anthropic-ai/sdk';
-import OpenAI from 'openai';
+import { anthropic, MODELS } from '@/lib/anthropic';
+import { embed } from '@/lib/voyage';
 import { createClient } from '@supabase/supabase-js';
 import { notifyClientWebhook } from '@/lib/webhook';
 import { sendEmail } from '@/lib/n8n';
@@ -23,13 +23,6 @@ async function isRateLimited(ip) {
         return false
     }
 }
-
-// Initialization
-const anthropic = new Anthropic({
-    apiKey: process.env.ANTHROPIC_API_KEY,
-});
-
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -136,17 +129,6 @@ export async function POST(request) {
             }
         }
 
-        // Save user message atomically before AI call
-        if (conversationId && (message || fileUrl)) {
-            await supabase.from('messages').insert({
-                conversation_id: conversationId,
-                role: 'user',
-                content: message || '[Vedlegg]',
-                file_url: fileUrl || null,
-                client_id: clientId,
-            });
-        }
-
         // Fetch History — load ALL messages for this conversation so the agent
         // never "forgets" earlier info (previous limit of 20 caused memory loss
         // in longer conversations like the Elkjøp Tillertorget case with 35+ msgs).
@@ -168,7 +150,7 @@ export async function POST(request) {
         }
 
         // Trim history to avoid exceeding token limits
-        const MAX_HISTORY_CHARS = 12000
+        const MAX_HISTORY_CHARS = 40000
         let totalChars = 0
         const trimmedHistory = []
         for (const msg of [...history].reverse()) {
@@ -178,6 +160,17 @@ export async function POST(request) {
             totalChars += len
         }
         history = trimmedHistory
+
+        // Save user message atomically (after history fetch to avoid double-send)
+        if (conversationId && (message || fileUrl)) {
+            await supabase.from('messages').insert({
+                conversation_id: conversationId,
+                role: 'user',
+                content: message || '[Vedlegg]',
+                file_url: fileUrl || null,
+                client_id: clientId,
+            });
+        }
 
         // Fetch Opening Hours for the prompt (filtrert på klient)
         const { data: hoursData } = await supabase
@@ -219,13 +212,9 @@ export async function POST(request) {
 
         // RAG: hent relevante knowledge_chunks basert på brukerens melding
         let ragContext = '';
-        if (message && process.env.OPENAI_API_KEY) {
+        if (message && process.env.VOYAGE_API_KEY) {
             try {
-                const embeddingRes = await openai.embeddings.create({
-                    model: 'text-embedding-3-small',
-                    input: message,
-                });
-                const queryEmbedding = embeddingRes.data[0].embedding;
+                const [queryEmbedding] = await embed(message, 'query');
                 const { data: chunks } = await supabase.rpc('match_chunks', {
                     query_embedding: queryEmbedding,
                     match_client_id: clientId,
@@ -261,7 +250,7 @@ export async function POST(request) {
 
         // Kall Claude Haiku
         const claudeResponse = await anthropic.messages.create({
-            model: process.env.CLAUDE_CHAT_MODEL || 'claude-haiku-4-5-20251001',
+            model: MODELS.chatbot,
             system: dynamicSystemPrompt,
             messages: apiMessages,
             max_tokens: 2048,

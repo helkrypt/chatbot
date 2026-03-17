@@ -64,6 +64,16 @@ export async function POST(req) {
 // ── Handlers ────────────────────────────────────────────────────────────────
 
 async function handleCheckoutCompleted(session, admin) {
+  // Idempotency: sjekk om denne checkout-sessionen allerede er prosessert
+  const { data: alreadyProcessed } = await admin.from('clients')
+    .select('id')
+    .filter('config->>stripe_checkout_id', 'eq', session.id)
+    .maybeSingle()
+  if (alreadyProcessed) {
+    console.log(`[Stripe] Session allerede prosessert: ${session.id} (klient: ${alreadyProcessed.id})`)
+    return
+  }
+
   const customerEmail = session.customer_details?.email
   const customerName = session.customer_details?.name || ''
   const companyName = session.metadata?.company_name || customerName || 'Ny kunde'
@@ -91,7 +101,7 @@ async function handleCheckoutCompleted(session, admin) {
     escalation_email: customerEmail || '',
     chatbot_title: 'Kundeservice',
     active: false, // Aktiveres av n8n etter onboarding
-    status: 'pending',
+    status: 'onboarding_pending',
     stripe_customer_id: stripeCustomerId,
     stripe_subscription_id: stripeSubscriptionId,
     config: {
@@ -137,14 +147,27 @@ async function handleCheckoutCompleted(session, admin) {
   }).catch(err => console.warn('[Stripe] Kjøpsbekreftelse feilet:', err.message))
 
   // Trigger onboarding workflow
-  await triggerClientOnboarding({
-    clientId,
-    companyName,
-    orgnr,
-    websiteUrl: websiteUrl || (client.domain ? `https://${client.domain}` : ''),
-    adminEmail: customerEmail || '',
-    adminName: customerName,
-  })
+  try {
+    await triggerClientOnboarding({
+      clientId,
+      companyName,
+      orgnr,
+      websiteUrl: websiteUrl || (client.domain ? `https://${client.domain}` : ''),
+      adminEmail: customerEmail || '',
+      adminName: customerName,
+    })
+  } catch (onboardErr) {
+    console.error(`[Stripe] Onboarding feilet for ${clientId}:`, onboardErr.message)
+    await admin.from('clients').update({ status: 'onboarding_failed' }).eq('id', clientId)
+    await notifyAdmin({
+      type: 'onboarding_failed',
+      title: `Onboarding feilet: ${companyName}`,
+      details: `Klient ${clientId} ble opprettet, men onboarding-workflow feilet: ${onboardErr.message}. Re-trigger fra admin-panelet.`,
+      clientId,
+      severity: 'error',
+    }).catch(() => {})
+    throw onboardErr // La webhook returnere 500 slik at Stripe prøver igjen
+  }
 
   console.log(`[Stripe] Ny klient opprettet: ${clientId} (${companyName}, plan: ${plan})`)
 }

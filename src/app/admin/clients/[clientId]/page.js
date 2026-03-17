@@ -21,6 +21,7 @@ export default function AdminClientPage() {
   const [form, setForm] = useState(null)
   const [selectedModules, setSelectedModules] = useState([])
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
+  const [retriggering, setRetriggering] = useState(false)
 
   // Brreg state
   const [brregLoading, setBrregLoading] = useState(false)
@@ -174,6 +175,28 @@ export default function AdminClientPage() {
     const res = await fetch(`/api/clients/${clientId}`, { method: 'DELETE' })
     if (res.ok) router.push('/admin')
     else alert('Kunne ikke slette klienten.')
+  }
+
+  const handleRetriggerOnboarding = async () => {
+    if (!confirm('Re-trigger onboarding for denne klienten?')) return
+    setRetriggering(true)
+    try {
+      const res = await fetch(`/api/clients/${clientId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ retrigger_onboarding: true }),
+      })
+      if (res.ok) {
+        alert('Onboarding er re-trigget. Sjekk n8n for status.')
+        loadClient()
+      } else {
+        const { error } = await res.json()
+        alert('Feil: ' + error)
+      }
+    } catch {
+      alert('Nettverksfeil')
+    }
+    setRetriggering(false)
   }
 
   const BackButton = () => (
@@ -415,6 +438,29 @@ export default function AdminClientPage() {
                 <input type="checkbox" id="active" checked={form.active !== false} onChange={e => setForm({ ...form, active: e.target.checked })} />
                 <label htmlFor="active" style={{ fontSize: '14px' }}>Aktiv</label>
               </div>
+
+              {/* Onboarding-status */}
+              {!isNew && client?.status && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 14px', borderRadius: '8px', border: '1px solid var(--color-border)', background: client.status === 'onboarding_failed' ? '#fef2f2' : 'var(--color-bg-subtle)' }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: '12px', fontWeight: '600', color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Onboarding-status</div>
+                    <div style={{ fontSize: '14px', fontWeight: '500', color: client.status === 'onboarding_failed' ? '#dc2626' : 'var(--color-text)', marginTop: '2px' }}>
+                      {{ active: 'Fullfort', pending: 'Ventende', onboarding_pending: 'Onboarding startet', onboarding_failed: 'Onboarding feilet', inactive: 'Inaktiv', deleted: 'Slettet' }[client.status] || client.status}
+                    </div>
+                  </div>
+                  {(client.status === 'onboarding_failed' || client.status === 'onboarding_pending') && (
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      onClick={handleRetriggerOnboarding}
+                      disabled={retriggering}
+                      style={{ fontSize: '13px', whiteSpace: 'nowrap' }}
+                    >
+                      {retriggering ? 'Sender...' : 'Re-trigger onboarding'}
+                    </button>
+                  )}
+                </div>
+              )}
             </section>
 
             <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', paddingTop: '4px' }}>

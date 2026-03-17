@@ -10,16 +10,34 @@ export async function POST(request) {
     try {
         const formData = await request.formData();
         const file = formData.get('file');
+        const clientId = formData.get('client_id');
 
         if (!file) {
             return NextResponse.json({ error: 'No file uploaded' }, { status: 400 });
         }
 
+        if (!clientId) {
+            return NextResponse.json({ error: 'Missing client_id' }, { status: 401 });
+        }
+
+        // Valider at klienten finnes og er aktiv
+        const { data: client } = await supabase
+            .from('clients')
+            .select('id')
+            .eq('id', clientId)
+            .eq('active', true)
+            .single();
+
+        if (!client) {
+            return NextResponse.json({ error: 'Ugyldig eller inaktiv klient' }, { status: 401 });
+        }
+
         const bytes = await file.arrayBuffer();
         const buffer = Buffer.from(bytes);
 
-        // Create a unique filename
-        const filename = `${Date.now()}-${file.name.replace(/[^a-zA-Z0-9.]/g, '_')}`;
+        // Create a unique filename scoped to client
+        const sanitizedName = file.name.replace(/[^a-zA-Z0-9.]/g, '_');
+        const filename = `${clientId}/${Date.now()}-${sanitizedName}`;
 
         // Upload to 'uploads' bucket defined in schema
         const { data, error } = await supabase.storage

@@ -1,14 +1,10 @@
 import { createClient } from '@supabase/supabase-js'
-import OpenAI from 'openai'
+import { anthropic, MODELS } from '@/lib/anthropic'
 
 const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL,
     process.env.SUPABASE_SERVICE_ROLE_KEY
 )
-
-const openai = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY,
-})
 
 export async function POST(request) {
     try {
@@ -30,41 +26,32 @@ export async function POST(request) {
         const base64Image = buffer.toString('base64')
         const mimeType = file.type || 'image/jpeg'
 
-        const prompt = `
-        Analyser dette bildet av en etikett. Det er ofte litt uklart hva hvert felt er, men du skal KUN trekke ut følgende to ting:
+        const prompt = `Analyser dette bildet av en etikett. Det er ofte litt uklart hva hvert felt er, men du skal KUN trekke ut følgende to ting:
 
-        1. Delenummer (I bildet ser det feks ut slik: "14004 82 98-01/6")
-        2. Ordrenummer (I bildet kan det feks stå "2662096-01", men du skal KUN hente ut tallene før bindestreken, altså "2662096")
+1. Delenummer (I bildet ser det feks ut slik: "14004 82 98-01/6")
+2. Ordrenummer (I bildet kan det feks stå "2662096-01", men du skal KUN hente ut tallene før bindestreken, altså "2662096")
 
-        Returner resultatet KUN som et gyldig JSON objekt.
+Returner resultatet KUN som et gyldig JSON objekt, uten noe annet tekst.
 
-        Eksempel på output:
-        {
-          "delenummer": "14004 82 98-01/6",
-          "ordrenummer": "2662096"
-        }
-        `
+Eksempel på output:
+{"delenummer": "14004 82 98-01/6", "ordrenummer": "2662096"}`
 
-        const response = await openai.chat.completions.create({
-            model: 'gpt-4o',
-            messages: [
-                {
-                    role: 'user',
-                    content: [
-                        { type: 'text', text: prompt },
-                        {
-                            type: 'image_url',
-                            image_url: {
-                                url: `data:${mimeType};base64,${base64Image}`
-                            }
-                        }
-                    ]
-                }
-            ],
-            response_format: { type: 'json_object' }
+        const response = await anthropic.messages.create({
+            model: MODELS.chatbot,
+            max_tokens: 256,
+            messages: [{
+                role: 'user',
+                content: [
+                    { type: 'image', source: { type: 'base64', media_type: mimeType, data: base64Image } },
+                    { type: 'text', text: prompt }
+                ]
+            }]
         })
 
-        const resultDict = JSON.parse(response.choices[0].message.content)
+        const rawText = response.content[0].text
+        // Parse JSON from response — handle potential markdown code blocks
+        const jsonMatch = rawText.match(/\{[\s\S]*\}/)
+        const resultDict = JSON.parse(jsonMatch ? jsonMatch[0] : rawText)
         const delenummer = resultDict.delenummer || 'UNKNOWN'
         const ordrenummer = resultDict.ordrenummer || 'UNKNOWN'
 
@@ -106,4 +93,3 @@ export async function POST(request) {
         return Response.json({ error: error.message }, { status: 500 })
     }
 }
-

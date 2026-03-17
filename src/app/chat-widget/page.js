@@ -8,8 +8,8 @@ import remarkGfm from 'remark-gfm';
 export default function ChatWidget() {
     // Les client_id fra URL — satt av embed-scriptet via iframe src ?client=...
     const [clientId] = useState(() => {
-        if (typeof window === 'undefined') return 'elesco-trondheim'
-        return new URLSearchParams(window.location.search).get('client') || 'elesco-trondheim'
+        if (typeof window === 'undefined') return null
+        return new URLSearchParams(window.location.search).get('client') || null
     })
 
     const [messages, setMessages] = useState([]);
@@ -63,8 +63,11 @@ export default function ChatWidget() {
 
     const SESSION_TIMEOUT = 2 * 60 * 60 * 1000; // 2 hours in milliseconds
 
+    const convKey = clientId ? `helkrypt_conv_${clientId}` : null;
+    const activityKey = clientId ? `helkrypt_activity_${clientId}` : null;
+
     const updateLastActivity = () => {
-        localStorage.setItem('elesco_last_activity', Date.now().toString());
+        if (activityKey) localStorage.setItem(activityKey, Date.now().toString());
     };
 
     useEffect(() => {
@@ -91,14 +94,15 @@ export default function ChatWidget() {
 
     useEffect(() => {
         const restoreSession = async () => {
-            const savedConvId = localStorage.getItem('elesco_conv_id');
-            const lastActivity = localStorage.getItem('elesco_last_activity');
+            if (!convKey) { setMessages([WELCOME_MSG]); return; }
+            const savedConvId = localStorage.getItem(convKey);
+            const lastActivity = localStorage.getItem(activityKey);
             const now = Date.now();
 
             // Timed-out session → clear and show only welcome
             if (savedConvId && lastActivity && (now - parseInt(lastActivity) > SESSION_TIMEOUT)) {
-                localStorage.removeItem('elesco_conv_id');
-                localStorage.removeItem('elesco_last_activity');
+                localStorage.removeItem(convKey);
+                localStorage.removeItem(activityKey);
                 setMessages([WELCOME_MSG]);
                 return;
             }
@@ -126,7 +130,8 @@ export default function ChatWidget() {
                     console.error('Failed to load messages:', error);
                 }
                 // Stale/empty session → clear it
-                localStorage.removeItem('elesco_conv_id');
+                localStorage.removeItem(convKey);
+                localStorage.removeItem(activityKey);
             }
 
             // No session → show static welcome, DO NOT create DB record yet
@@ -178,7 +183,7 @@ export default function ChatWidget() {
                 // Oppdater conversationId hvis vi fikk en ny (første melding)
                 if (data.conversationId && !conversationId) {
                     setConversationId(data.conversationId);
-                    localStorage.setItem('elesco_conv_id', data.conversationId);
+                    if (convKey) localStorage.setItem(convKey, data.conversationId);
                 }
 
                 const assistantMessage = {
@@ -205,6 +210,7 @@ export default function ChatWidget() {
         setUploading(true);
         const formData = new FormData();
         formData.append('file', file);
+        formData.append('client_id', clientId);
 
         try {
             const uploadRes = await fetch('/api/upload', {
@@ -226,12 +232,21 @@ export default function ChatWidget() {
 
     const clearChat = () => {
         if (confirm('Er du sikker på at du vil slette chat-historikken?')) {
-            localStorage.removeItem('elesco_conv_id');
+            if (convKey) localStorage.removeItem(convKey);
+            if (activityKey) localStorage.removeItem(activityKey);
             window.location.reload();
         }
     };
 
 
+
+    if (!clientId) {
+        return (
+            <div className={styles.widgetContainer} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2rem', textAlign: 'center', color: '#6b7280' }}>
+                <p>Mangler klient-konfigurasjon. Kontakt administrator.</p>
+            </div>
+        );
+    }
 
     return (
         <div className={styles.widgetContainer} style={{ fontFamily: widgetTheme.font_family, background: widgetTheme.background_color }}>

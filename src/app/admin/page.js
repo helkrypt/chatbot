@@ -9,6 +9,7 @@ export default function AdminPage() {
   const router = useRouter()
   const [clients, setClients] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [showDeleted, setShowDeleted] = useState(false)
 
   useEffect(() => {
     fetch('/api/clients')
@@ -24,8 +25,9 @@ export default function AdminPage() {
       .finally(() => setLoading(false))
   }, [router])
 
-  const totalClients = clients?.length || 0
-  const activeClients = clients?.filter(c => c.active).length || 0
+  const visibleClients = showDeleted ? clients : clients?.filter(c => c.status !== 'deleted')
+  const totalClients = visibleClients?.length || 0
+  const activeClients = visibleClients?.filter(c => c.active).length || 0
   const inactiveClients = totalClients - activeClients
 
   if (loading) return null
@@ -56,6 +58,11 @@ export default function AdminPage() {
           </div>
         </div>
 
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+          <input type="checkbox" id="showDeleted" checked={showDeleted} onChange={e => setShowDeleted(e.target.checked)} />
+          <label htmlFor="showDeleted" style={{ fontSize: '13px', color: 'var(--color-text-muted)' }}>Vis slettede kunder</label>
+        </div>
+
         <div className="card">
           <div className="table-container">
             <table>
@@ -71,7 +78,7 @@ export default function AdminPage() {
                 </tr>
               </thead>
               <tbody>
-                {clients?.map(c => (
+                {visibleClients?.map(c => (
                   <tr
                     key={c.id}
                     onClick={() => router.push(`/admin/clients/${c.id}`)}
@@ -94,10 +101,10 @@ export default function AdminPage() {
                         fontSize: '12px',
                         padding: '2px 8px',
                         borderRadius: '12px',
-                        background: c.active ? '#d1fae5' : '#f3f4f6',
-                        color: c.active ? '#065f46' : '#6b7280',
+                        background: c.status === 'deleted' ? '#fef2f2' : c.status === 'onboarding_failed' ? '#fef2f2' : c.active ? '#d1fae5' : '#f3f4f6',
+                        color: c.status === 'deleted' ? '#dc2626' : c.status === 'onboarding_failed' ? '#dc2626' : c.active ? '#065f46' : '#6b7280',
                       }}>
-                        {c.active ? 'Aktiv' : 'Inaktiv'}
+                        {{ active: 'Aktiv', inactive: 'Inaktiv', deleted: 'Slettet', onboarding_pending: 'Onboarding...', onboarding_failed: 'Feilet', pending: 'Ventende' }[c.status] || (c.active ? 'Aktiv' : 'Inaktiv')}
                       </span>
                     </td>
                     <td style={{ fontSize: '13px', color: 'var(--color-text-muted)' }}>

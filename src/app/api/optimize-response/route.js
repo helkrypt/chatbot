@@ -1,11 +1,7 @@
 import { NextResponse } from 'next/server';
-import Anthropic from '@anthropic-ai/sdk';
+import { anthropic, MODELS } from '@/lib/anthropic';
 import { createAdminClient } from '@/lib/supabase-admin';
 import { createClient } from '@/lib/supabase-server';
-
-const anthropic = new Anthropic({
-    apiKey: process.env.ANTHROPIC_API_KEY,
-});
 
 export async function POST(request) {
     const supabase = await createClient()
@@ -76,7 +72,7 @@ ${signature}
 - Skriv på norsk`;
 
         const claudeResponse = await anthropic.messages.create({
-            model: process.env.CLAUDE_CHAT_MODEL || 'claude-haiku-4-5-20251001',
+            model: MODELS.chatbot,
             system: systemPrompt,
             messages: [
                 {

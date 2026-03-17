@@ -1,5 +1,6 @@
 import { createAdminClient } from '@/lib/supabase-admin'
 import { createClient } from '@/lib/supabase-server'
+import { triggerClientOnboarding } from '@/lib/n8n'
 
 async function getAuthorizedUser(clientId) {
   const supabase = await createClient()
@@ -41,6 +42,25 @@ export async function PATCH(req, { params }) {
   if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 })
 
   const body = await req.json()
+
+  // Spesialhåndtering: re-trigger onboarding
+  if (body.retrigger_onboarding) {
+    const admin = createAdminClient()
+    const { data: client } = await admin.from('clients').select('*').eq('id', clientId).single()
+    if (!client) return Response.json({ error: 'Client not found' }, { status: 404 })
+
+    await admin.from('clients').update({ status: 'onboarding_pending' }).eq('id', clientId)
+    await triggerClientOnboarding({
+      clientId,
+      companyName: client.name,
+      orgnr: client.config?.orgnr || '',
+      websiteUrl: client.domain || '',
+      adminEmail: client.config?.contact_email || client.escalation_email || '',
+      adminName: client.config?.contact_name || '',
+    })
+    return Response.json({ ok: true })
+  }
+
   const allowed = ['name', 'domain', 'plan', 'modules', 'escalation_email', 'chatbot_title', 'webhook_url', 'opening_hours', 'active', 'config']
   const updates = Object.fromEntries(Object.entries(body).filter(([k]) => allowed.includes(k)))
 
@@ -79,7 +99,11 @@ export async function DELETE(req, { params }) {
   const { data: profile } = await admin.from('profiles').select('role').eq('id', user.id).single()
   if (profile?.role !== 'sysadmin') return Response.json({ error: 'Forbidden' }, { status: 403 })
 
-  const { error } = await admin.from('clients').delete().eq('id', clientId)
+  const { error } = await admin.from('clients').update({
+    active: false,
+    status: 'deleted',
+    deleted_at: new Date().toISOString(),
+  }).eq('id', clientId)
   if (error) return Response.json({ error: error.message }, { status: 500 })
   return Response.json({ ok: true })
 }

@@ -17,6 +17,7 @@ export async function POST(request) {
   );
 
   await supabase.from('clients').update({
+    active: true,
     status: 'active',
     onboarding_completed_at: new Date().toISOString(),
   }).eq('id', clientId);

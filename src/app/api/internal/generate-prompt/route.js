@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import Anthropic from '@anthropic-ai/sdk';
+import { anthropic, MODELS } from '@/lib/anthropic';
 
 const WEBHOOK_SECRET = process.env.ONBOARDING_WEBHOOK_SECRET;
 
@@ -11,9 +11,8 @@ export async function POST(request) {
 
   const { clientId, companyName, websiteContent, brreg } = await request.json();
 
-  const anthropic = new Anthropic();
   const message = await anthropic.messages.create({
-    model: process.env.CLAUDE_MODEL_PROMPT_GEN || 'claude-opus-4-6',
+    model: MODELS.promptGen,
     max_tokens: 2000,
     messages: [{
       role: 'user',

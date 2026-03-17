@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import OpenAI from 'openai';
+import { embed } from '@/lib/voyage';
 
 const WEBHOOK_SECRET = process.env.ONBOARDING_WEBHOOK_SECRET;
 
@@ -12,11 +12,7 @@ export async function POST(request) {
 
   const { clientId, content, source } = await request.json();
 
-  const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-  const embedding = await openai.embeddings.create({
-    model: 'text-embedding-3-small',
-    input: content,
-  });
+  const [embedding] = await embed(content, 'document');
 
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -32,7 +28,7 @@ export async function POST(request) {
     client_id: clientId,
     content,
     source_url: source || null,
-    embedding: embedding.data[0].embedding,
+    embedding,
     chunk_index: existingCount || 0,
   });
 

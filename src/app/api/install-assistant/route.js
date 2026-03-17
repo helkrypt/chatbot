@@ -1,7 +1,5 @@
 import { NextResponse } from 'next/server';
-import Anthropic from '@anthropic-ai/sdk';
-
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+import { anthropic, MODELS } from '@/lib/anthropic';
 
 const SYSTEM_PROMPT = `Du er en vennlig teknisk installasjonsassistent for Helkrypt AI sitt chat-widget.
 Din jobb er å hjelpe kunden med å legge til chat-widgeten på sin nettside.
@@ -31,7 +29,7 @@ export async function POST(request) {
         }
 
         const claudeResponse = await anthropic.messages.create({
-            model: process.env.CLAUDE_CHAT_MODEL || 'claude-haiku-4-5-20251001',
+            model: MODELS.chatbot,
             system: SYSTEM_PROMPT,
             messages: messages.slice(-10), // keep last 10 messages for context
             max_tokens: 400,
