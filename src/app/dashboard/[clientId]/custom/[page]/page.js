@@ -7,7 +7,6 @@ import Sidebar from '@/components/Sidebar'
 
 // Module registry — add new modules here
 const MODULE_PAGES = {
-  'kolliretur': () => import('@/modules/kolliretur/pages/DashboardPage'),
 }
 
 export default function CustomModulePage() {

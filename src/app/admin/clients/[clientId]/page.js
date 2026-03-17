@@ -7,7 +7,6 @@ import Sidebar from '@/components/Sidebar'
 import Link from 'next/link'
 
 const AVAILABLE_MODULES = [
-  { id: 'kolliretur', label: 'Kolliretur', description: 'Retursystem for pakker og kolli' },
 ]
 
 export default function AdminClientPage() {

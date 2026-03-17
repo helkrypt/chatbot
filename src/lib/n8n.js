@@ -10,7 +10,6 @@ const N8N_WEBHOOK_SECRET = process.env.N8N_WEBHOOK_SECRET;
  * client-onboarding         → IWF5Dee6ZXV6m3qz
  * welcome-email             → BLbKhLi9ucZCXenV
  * admin-notification        → 2uyAhk7AHE8RphsY
- * kolliretur-notification   → BtOmI51NC8kk7HnL
  * password-reset            → FprQ1NFgbPMUHRdK
  * agent-feedback            → HFAc5DVGLFNETph5
  * website-scraper           → AcikisvbOXmKC03M
@@ -79,22 +78,6 @@ export async function sendWelcomeEmail({ to, name, role, clientId, clientName })
 export async function notifyAdmin({ type, title, details, clientId, clientName, severity = 'info' }) {
   return callN8nWebhook('admin-notification', {
     type, title, details, clientId, clientName, severity,
-  });
-}
-
-/**
- * Send Kolliretur-notifikasjon
- * Workflow: helkrypt-kolliretur-notification (BtOmI51NC8kk7HnL)
- */
-export async function sendKollireturnNotification({
-  notificationType, clientId, returnId,
-  customerEmail, customerName,
-  storeEmail, productDescription, trackingNumber,
-}) {
-  return callN8nWebhook('kolliretur-notification', {
-    notificationType, clientId, returnId,
-    customerEmail, customerName,
-    storeEmail, productDescription, trackingNumber,
   });
 }
 
