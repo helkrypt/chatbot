@@ -1,14 +1,16 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, Suspense } from 'react'
 import { createClient } from '@/lib/supabase'
 import Sidebar from '@/components/Sidebar'
 import Navbar from '@/components/Navbar'
+import InspectBanner from '@/components/InspectBanner'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 
-export default function InquiriesPage() {
+function InquiriesPageInner() {
     const router = useRouter()
+    const searchParams = useSearchParams()
     const supabase = createClient()
     const [inquiries, setInquiries] = useState([])
     const [loading, setLoading] = useState(true)
@@ -16,9 +18,12 @@ export default function InquiriesPage() {
     const [userRole, setUserRole] = useState('agent')
     const [showResolvedAdmin, setShowResolvedAdmin] = useState(false)
 
+    const isInspecting = searchParams.get('inspect') === 'true'
+    const inspectedClientId = searchParams.get('client_id')
+
     useEffect(() => {
         loadInquiries()
-    }, [])
+    }, [inspectedClientId])
 
     const loadInquiries = async () => {
         setLoading(true)
@@ -29,11 +34,16 @@ export default function InquiriesPage() {
             if (profile) setUserRole(profile.role)
         }
 
-        const { data, error } = await supabase
+        let query = supabase
             .from('inquiries')
             .select('*')
             .order('created_at', { ascending: false })
 
+        if (isInspecting && inspectedClientId) {
+            query = query.eq('client_id', inspectedClientId)
+        }
+
+        const { data, error } = await query
         if (error) {
             console.error('Failed to load inquiries:', error)
         } else {
@@ -61,6 +71,8 @@ export default function InquiriesPage() {
     }
 
     return (
+        <>
+        {isInspecting && <InspectBanner clientId={inspectedClientId} />}
         <div className="app-container">
             <Sidebar isOpen={isSidebarOpen} onClose={() => setIsSidebarOpen(false)} />
 
@@ -162,5 +174,14 @@ export default function InquiriesPage() {
                 }
             `}</style>
         </div>
+        </>
+    )
+}
+
+export default function InquiriesPage() {
+    return (
+        <Suspense fallback={null}>
+            <InquiriesPageInner />
+        </Suspense>
     )
 }

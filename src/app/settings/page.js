@@ -1,10 +1,16 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, Suspense } from 'react'
 import { createClient } from '@/lib/supabase'
 import Sidebar from '@/components/Sidebar'
+import InspectBanner from '@/components/InspectBanner'
+import { useSearchParams } from 'next/navigation'
 
-export default function SettingsPage() {
+function SettingsPageInner() {
+    const searchParams = useSearchParams()
+    const isInspecting = searchParams.get('inspect') === 'true'
+    const inspectedClientId = searchParams.get('client_id')
+
     const [prompt, setPrompt] = useState('')
     const [instruction, setInstruction] = useState('')
     const [loading, setLoading] = useState(true)
@@ -38,6 +44,7 @@ export default function SettingsPage() {
 
         // Check Role
         const { data: { user } } = await supabase.auth.getUser()
+        let effectiveClientId = inspectedClientId || ''
         if (user) {
             const { data: profile } = await supabase
                 .from('profiles')
@@ -45,15 +52,18 @@ export default function SettingsPage() {
                 .eq('id', user.id)
                 .single()
             setUserRole(profile?.role || 'agent')
-            setClientId(profile?.client_id || '')
+            if (!inspectedClientId) {
+                effectiveClientId = profile?.client_id || ''
+            }
+            setClientId(effectiveClientId)
         }
 
         // Fetch Prompt from system_prompts (multi-tenant)
-        if (profile?.client_id) {
+        if (effectiveClientId) {
             const { data: promptData } = await supabase
                 .from('system_prompts')
                 .select('content')
-                .eq('client_id', profile.client_id)
+                .eq('client_id', effectiveClientId)
                 .eq('active', true)
                 .single()
 
@@ -63,12 +73,17 @@ export default function SettingsPage() {
         }
 
         // Fetch Opening Hours
-        const { data: hoursData } = await supabase
+        let hoursQuery = supabase
             .from('opening_hours')
             .select('*')
             .order('category', { ascending: true })
             .order('sort_order', { ascending: true })
 
+        if (effectiveClientId) {
+            hoursQuery = hoursQuery.eq('client_id', effectiveClientId)
+        }
+
+        const { data: hoursData } = await hoursQuery
         if (hoursData) {
             setOpeningHours(hoursData)
         }
@@ -230,6 +245,8 @@ export default function SettingsPage() {
     }
 
     return (
+        <>
+        {isInspecting && <InspectBanner clientId={inspectedClientId} />}
         <div className="app-container">
             <Sidebar />
             <main className="main-content">
@@ -499,5 +516,14 @@ export default function SettingsPage() {
                 </div>
             </main>
         </div>
+        </>
+    )
+}
+
+export default function SettingsPage() {
+    return (
+        <Suspense fallback={null}>
+            <SettingsPageInner />
+        </Suspense>
     )
 }

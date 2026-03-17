@@ -1,12 +1,26 @@
 'use client'
 
 import { useRouter, useSearchParams } from 'next/navigation'
-import { Suspense } from 'react'
+import { Suspense, useState, useEffect } from 'react'
+import { createClient } from '@/lib/supabase'
 
-function BannerInner({ clientId, clientName }) {
+function BannerInner({ clientId, clientName: clientNameProp }) {
   const router = useRouter()
   const searchParams = useSearchParams()
   const isInspecting = searchParams.get('inspect') === 'true'
+  const [clientName, setClientName] = useState(clientNameProp || '')
+
+  useEffect(() => {
+    if (clientNameProp) { setClientName(clientNameProp); return }
+    if (!clientId) return
+    const supabase = createClient()
+    supabase
+      .from('clients')
+      .select('name')
+      .eq('id', clientId)
+      .single()
+      .then(({ data }) => { if (data?.name) setClientName(data.name) })
+  }, [clientId, clientNameProp])
 
   if (!isInspecting) return null
 

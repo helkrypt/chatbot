@@ -32,6 +32,15 @@ export default function AdminClientPage() {
 
   const isNew = clientId === 'new'
 
+  const generateSlug = (name) => {
+    return (name || '')
+      .toLowerCase()
+      .replace(/æ/g, 'ae').replace(/ø/g, 'oe').replace(/å/g, 'aa')
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 50)
+  }
+
   useEffect(() => {
     checkAuth()
     if (!isNew) loadClient()
@@ -76,14 +85,14 @@ export default function AdminClientPage() {
       ].filter(Boolean).join(', ')
 
       if (isNew) {
+        const navn = data.navn || ''
         setForm({
-          id: '',
-          name: data.navn || '',
+          id: generateSlug(navn),
+          name: navn,
           domain: data.hjemmeside ? `https://${data.hjemmeside.replace(/^https?:\/\//, '')}` : '',
           plan: 'standard',
           escalation_email: '',
           chatbot_title: 'Kundeservice',
-          webhook_url: '',
           active: true,
           orgnr: clean,
           invoice_address: addrLine,
@@ -219,7 +228,7 @@ export default function AdminClientPage() {
               <button
                 type="button"
                 onClick={() => {
-                  setForm({ id: '', name: '', domain: '', plan: 'standard', escalation_email: '', chatbot_title: 'Kundeservice', webhook_url: '', active: true, orgnr: '', invoice_address: '' })
+                  setForm({ id: '', name: '', domain: '', plan: 'standard', escalation_email: '', chatbot_title: 'Kundeservice', active: true, orgnr: '', invoice_address: '' })
                   setShowOrgnrSearch(false)
                 }}
                 style={{ background: 'none', border: 'none', color: 'var(--color-text-muted)', fontSize: '13px', cursor: 'pointer', textAlign: 'left', padding: 0 }}
@@ -288,16 +297,21 @@ export default function AdminClientPage() {
               </div>
               {brregError && <p style={{ color: '#ef4444', fontSize: '13px', margin: 0 }}>{brregError}</p>}
 
-              {isNew && (
-                <div className="form-group">
-                  <label className="form-label">ID (slug, f.eks. butikk-oslo)</label>
-                  <input className="form-input" value={form.id || ''} onChange={e => setForm({ ...form, id: e.target.value })} required pattern="[a-z0-9-]+" placeholder="butikk-oslo" />
-                </div>
-              )}
-
               <div className="form-group">
                 <label className="form-label">Bedriftsnavn</label>
-                <input className="form-input" value={form.name || ''} onChange={e => setForm({ ...form, name: e.target.value })} required />
+                <input
+                  className="form-input"
+                  value={form.name || ''}
+                  onChange={e => {
+                    const name = e.target.value
+                    setForm(prev => ({
+                      ...prev,
+                      name,
+                      ...(isNew ? { id: generateSlug(name) } : {}),
+                    }))
+                  }}
+                  required
+                />
               </div>
 
               <div className="form-group">
@@ -370,19 +384,6 @@ export default function AdminClientPage() {
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <input type="checkbox" id="active" checked={form.active !== false} onChange={e => setForm({ ...form, active: e.target.checked })} />
                 <label htmlFor="active" style={{ fontSize: '14px' }}>Aktiv</label>
-              </div>
-            </section>
-
-            {/* Avansert */}
-            <section style={{ display: 'flex', flexDirection: 'column', gap: '14px', borderTop: '1px solid var(--color-border)', paddingTop: '20px' }}>
-              <h3 style={{ fontSize: '12px', fontWeight: '700', color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', margin: 0 }}>Avansert</h3>
-
-              <div className="form-group">
-                <label className="form-label">n8n Webhook URL</label>
-                <input className="form-input" value={form.webhook_url || ''} onChange={e => setForm({ ...form, webhook_url: e.target.value })} placeholder="https://n8n.helkrypt.no/webhook/..." />
-                <p style={{ fontSize: '12px', color: 'var(--color-text-muted)', margin: '4px 0 0' }}>
-                  Brukes til å sende hendelser (f.eks. ny chathenvendelse) til automatiseringsflyter i n8n.
-                </p>
               </div>
             </section>
 

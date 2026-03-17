@@ -91,7 +91,7 @@ function SidebarInner({ isOpen, onClose }) {
     const supabase = createClient()
 
     const isInspecting = searchParams.get('inspect') === 'true'
-    const urlClientId = params?.clientId
+    const urlClientId = params?.clientId || searchParams.get('client_id')
 
     useEffect(() => {
         const getUser = async () => {
@@ -113,6 +113,17 @@ function SidebarInner({ isOpen, onClose }) {
                         .eq('id', profile.client_id)
                         .single()
                     setClient(clientData)
+                } else if (profile?.role === 'sysadmin') {
+                    // In inspect mode, fetch the inspected client's name
+                    const inspectedId = params?.clientId || searchParams.get('client_id')
+                    if (inspectedId) {
+                        const { data: clientData } = await supabase
+                            .from('clients')
+                            .select('name')
+                            .eq('id', inspectedId)
+                            .single()
+                        setClient(clientData)
+                    }
                 }
             }
         }
@@ -139,17 +150,15 @@ function SidebarInner({ isOpen, onClose }) {
 
     // Bygg riktige hrefs
     const resolvedNavItems = navToShow.map(item => {
-        if (effectiveClientId) {
-            let href = item.href
-            if (href === '/dashboard/[clientId]') href = `/dashboard/${effectiveClientId}`
-            else if (href === '/conversations') href = `/dashboard/${effectiveClientId}/conversations`
-            else if (href === '/inquiries') href = `/dashboard/${effectiveClientId}/inquiries`
-            else if (href === '/users') href = `/dashboard/${effectiveClientId}/users`
-            else if (href === '/settings') href = `/dashboard/${effectiveClientId}/settings`
-            if (isInspecting) href = `${href}?inspect=true`
-            return { ...item, href }
+        let href = item.href
+        if (href === '/dashboard/[clientId]') {
+            href = effectiveClientId ? `/dashboard/${effectiveClientId}` : '/dashboard'
+            if (isInspecting && effectiveClientId) href += `?inspect=true`
+        } else if (isInspecting && effectiveClientId) {
+            // Inspect-modus: legg til inspect + client_id som query params
+            href = `${href}?inspect=true&client_id=${effectiveClientId}`
         }
-        return item
+        return { ...item, href }
     })
 
     // Filtrer brukere/innstillinger for agent-rolle

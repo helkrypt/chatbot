@@ -1,16 +1,18 @@
 'use client'
 
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, Suspense } from 'react'
 import { createClient } from '@/lib/supabase'
 import Sidebar from '@/components/Sidebar'
 import Navbar from '@/components/Navbar'
+import InspectBanner from '@/components/InspectBanner'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 
 const ITEMS_PER_PAGE = 10
 
-export default function ConversationsPage() {
+function ConversationsPageInner() {
     const router = useRouter()
+    const searchParams = useSearchParams()
     const supabase = createClient()
     const [conversations, setConversations] = useState([])
     const [loading, setLoading] = useState(true)
@@ -18,17 +20,25 @@ export default function ConversationsPage() {
     const [searchQuery, setSearchQuery] = useState('')
     const [currentPage, setCurrentPage] = useState(1)
 
+    const isInspecting = searchParams.get('inspect') === 'true'
+    const inspectedClientId = searchParams.get('client_id')
+
     useEffect(() => {
         loadConversations()
-    }, [])
+    }, [inspectedClientId])
 
     const loadConversations = async () => {
         setLoading(true)
-        const { data, error } = await supabase
+        let query = supabase
             .from('conversations')
             .select('*')
             .order('updated_at', { ascending: false })
 
+        if (isInspecting && inspectedClientId) {
+            query = query.eq('client_id', inspectedClientId)
+        }
+
+        const { data, error } = await query
         if (!error) {
             setConversations(data)
         }
@@ -64,6 +74,8 @@ export default function ConversationsPage() {
     }
 
     return (
+        <>
+        {isInspecting && <InspectBanner clientId={inspectedClientId} />}
         <div className="app-container">
             <Sidebar isOpen={isSidebarOpen} onClose={() => setIsSidebarOpen(false)} />
 
@@ -227,5 +239,14 @@ export default function ConversationsPage() {
                 }
             `}</style>
         </div>
+        </>
+    )
+}
+
+export default function ConversationsPage() {
+    return (
+        <Suspense fallback={null}>
+            <ConversationsPageInner />
+        </Suspense>
     )
 }
