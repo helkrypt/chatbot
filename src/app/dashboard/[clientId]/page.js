@@ -186,8 +186,9 @@ export default function ClientDashboardPage() {
   }
 
   return (
-    <div className="app-container">
+    <>
       <InspectBanner clientId={clientId} clientName={client?.name} />
+      <div className="app-container">
       <Sidebar isOpen={isSidebarOpen} onClose={() => setIsSidebarOpen(false)} />
       <main className="main-content">
         <Navbar onMenuClick={() => setIsSidebarOpen(true)} />
@@ -253,6 +254,7 @@ export default function ClientDashboardPage() {
           )}
         </div>
       </main>
-    </div>
+      </div>
+    </>
   )
 }

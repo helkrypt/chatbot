@@ -17,29 +17,29 @@ function BannerInner({ clientId, clientName }) {
       zIndex: 9999,
       background: '#f59e0b',
       color: '#1c1107',
-      padding: '10px 24px',
+      padding: '8px 24px',
       display: 'flex',
       alignItems: 'center',
-      justifyContent: 'space-between',
-      fontSize: '14px',
+      justifyContent: 'center',
+      gap: '16px',
+      fontSize: '13px',
       fontWeight: '600',
       borderBottom: '2px solid #d97706',
       boxShadow: '0 2px 8px rgba(245,158,11,0.4)',
+      width: '100%',
     }}>
-      <span>
-        Inspeksjonsmodus — {clientName || clientId}
-      </span>
+      <span>Inspeksjonsmodus — {clientName || clientId}</span>
       <button
         onClick={() => router.push(`/admin/clients/${clientId}`)}
         style={{
-          padding: '6px 16px',
+          padding: '4px 14px',
           background: '#1c1107',
           color: '#f59e0b',
           border: 'none',
           borderRadius: '6px',
           cursor: 'pointer',
           fontWeight: '600',
-          fontSize: '13px',
+          fontSize: '12px',
         }}
       >
         Avslutt inspeksjon

@@ -6,6 +6,10 @@ import { createClient } from '@/lib/supabase'
 import Sidebar from '@/components/Sidebar'
 import Link from 'next/link'
 
+const AVAILABLE_MODULES = [
+  { id: 'kolliretur', label: 'Kolliretur', description: 'Retursystem for pakker og kolli' },
+]
+
 export default function AdminClientPage() {
   const { clientId } = useParams()
   const router = useRouter()
@@ -15,17 +19,23 @@ export default function AdminClientPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState(null)
+  const [selectedModules, setSelectedModules] = useState([])
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
+
+  // Brreg state
+  const [brregLoading, setBrregLoading] = useState(false)
+  const [brregError, setBrregError] = useState('')
+
+  // For new clients: show orgnr search before the form
+  const [showOrgnrSearch, setShowOrgnrSearch] = useState(true)
+  const [orgnrInput, setOrgnrInput] = useState('')
 
   const isNew = clientId === 'new'
 
   useEffect(() => {
     checkAuth()
     if (!isNew) loadClient()
-    else {
-      setForm({ id: '', name: '', domain: '', plan: 'standard', modules: '', escalation_email: '', chatbot_title: 'Kundeservice', webhook_url: '', active: true })
-      setLoading(false)
-    }
+    else setLoading(false)
   }, [clientId])
 
   const checkAuth = async () => {
@@ -40,20 +50,79 @@ export default function AdminClientPage() {
     if (!res.ok) { router.push('/admin'); return }
     const { client } = await res.json()
     setClient(client)
+    const mods = client.modules || []
+    setSelectedModules(mods)
     setForm({
       ...client,
-      modules: (client.modules || []).join(', '),
+      orgnr: client.config?.orgnr || '',
+      invoice_address: client.config?.invoice_address || '',
     })
     setLoading(false)
+  }
+
+  const fetchBrreg = async (orgnr) => {
+    const clean = (orgnr || '').replace(/\s/g, '')
+    if (clean.length < 9) { setBrregError('Skriv inn et gyldig 9-sifret organisasjonsnummer.'); return }
+    setBrregLoading(true)
+    setBrregError('')
+    try {
+      const res = await fetch(`https://data.brreg.no/enhetsregisteret/api/enheter/${clean}`)
+      if (!res.ok) { setBrregError('Fant ikke organisasjonen i Brønnøysundregisteret.'); setBrregLoading(false); return }
+      const data = await res.json()
+      const addr = data.forretningsadresse || data.postadresse || {}
+      const addrLine = [
+        (addr.adresse || []).join(', '),
+        addr.postnummer && addr.poststed ? `${addr.postnummer} ${addr.poststed}` : '',
+      ].filter(Boolean).join(', ')
+
+      if (isNew) {
+        setForm({
+          id: '',
+          name: data.navn || '',
+          domain: data.hjemmeside ? `https://${data.hjemmeside.replace(/^https?:\/\//, '')}` : '',
+          plan: 'standard',
+          escalation_email: '',
+          chatbot_title: 'Kundeservice',
+          webhook_url: '',
+          active: true,
+          orgnr: clean,
+          invoice_address: addrLine,
+        })
+        setShowOrgnrSearch(false)
+      } else {
+        setForm(prev => ({
+          ...prev,
+          name: data.navn || prev.name,
+          domain: prev.domain || (data.hjemmeside ? `https://${data.hjemmeside.replace(/^https?:\/\//, '')}` : ''),
+          orgnr: clean,
+          invoice_address: addrLine,
+        }))
+      }
+    } catch {
+      setBrregError('Nettverksfeil – prøv igjen.')
+    }
+    setBrregLoading(false)
+  }
+
+  const toggleModule = (moduleId) => {
+    setSelectedModules(prev =>
+      prev.includes(moduleId) ? prev.filter(m => m !== moduleId) : [...prev, moduleId]
+    )
   }
 
   const handleSave = async (e) => {
     e.preventDefault()
     setSaving(true)
 
+    const { orgnr, invoice_address, ...rest } = form
     const payload = {
-      ...form,
-      modules: form.modules ? form.modules.split(',').map(m => m.trim()).filter(Boolean) : [],
+      ...rest,
+      modules: selectedModules,
+      config: {
+        ...(client?.config || {}),
+        ...(orgnr ? { orgnr } : {}),
+        ...(invoice_address ? { invoice_address } : {}),
+      },
     }
 
     let res
@@ -88,11 +157,78 @@ export default function AdminClientPage() {
     else alert('Kunne ikke slette klienten.')
   }
 
-  if (loading || !form) {
+  const BackButton = () => (
+    <Link href="/admin" className="btn btn-secondary" style={{ padding: '8px' }}>
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <path d="M19 12H5M12 19l-7-7 7-7" />
+      </svg>
+    </Link>
+  )
+
+  if (loading || (!isNew && !form)) {
     return (
       <div className="app-container">
         <Sidebar isOpen={isSidebarOpen} onClose={() => setIsSidebarOpen(false)} />
         <main className="main-content"><div className="loading"><div className="spinner"></div></div></main>
+      </div>
+    )
+  }
+
+  // New client: show Brreg search first
+  if (isNew && showOrgnrSearch) {
+    return (
+      <div className="app-container">
+        <Sidebar isOpen={isSidebarOpen} onClose={() => setIsSidebarOpen(false)} />
+        <main className="main-content">
+          <div className="page-header">
+            <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+              <BackButton />
+              <h1 className="page-title">Ny kunde</h1>
+            </div>
+          </div>
+          <div className="card" style={{ maxWidth: '500px' }}>
+            <div style={{ padding: '32px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+              <div>
+                <h2 style={{ fontSize: '18px', fontWeight: '600', margin: '0 0 6px' }}>Søk i Brønnøysundregisteret</h2>
+                <p style={{ fontSize: '14px', color: 'var(--color-text-muted)', margin: 0 }}>
+                  Skriv inn organisasjonsnummer for å hente bedriftsinformasjon automatisk.
+                </p>
+              </div>
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <input
+                  className="form-input"
+                  placeholder="123 456 789"
+                  value={orgnrInput}
+                  onChange={e => setOrgnrInput(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), fetchBrreg(orgnrInput))}
+                  style={{ flex: 1 }}
+                  maxLength={11}
+                  autoFocus
+                />
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={() => fetchBrreg(orgnrInput)}
+                  disabled={brregLoading}
+                  style={{ whiteSpace: 'nowrap' }}
+                >
+                  {brregLoading ? 'Henter...' : 'Hent info'}
+                </button>
+              </div>
+              {brregError && <p style={{ color: '#ef4444', fontSize: '13px', margin: 0 }}>{brregError}</p>}
+              <button
+                type="button"
+                onClick={() => {
+                  setForm({ id: '', name: '', domain: '', plan: 'standard', escalation_email: '', chatbot_title: 'Kundeservice', webhook_url: '', active: true, orgnr: '', invoice_address: '' })
+                  setShowOrgnrSearch(false)
+                }}
+                style={{ background: 'none', border: 'none', color: 'var(--color-text-muted)', fontSize: '13px', cursor: 'pointer', textAlign: 'left', padding: 0 }}
+              >
+                Hopp over — fyll inn manuelt
+              </button>
+            </div>
+          </div>
+        </main>
       </div>
     )
   }
@@ -103,65 +239,154 @@ export default function AdminClientPage() {
       <main className="main-content">
         <div className="page-header">
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-            <Link href="/admin" className="btn btn-secondary" style={{ padding: '8px' }}>
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M19 12H5M12 19l-7-7 7-7" />
-              </svg>
-            </Link>
+            <BackButton />
             <h1 className="page-title">{isNew ? 'Ny kunde' : client?.name}</h1>
           </div>
           {!isNew && (
-            <button onClick={handleDelete} style={{ padding: '8px 16px', background: 'none', border: '1px solid #ef4444', color: '#ef4444', borderRadius: '8px', cursor: 'pointer', fontSize: '14px' }}>
-              Slett kunde
-            </button>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <Link
+                href={`/dashboard/${clientId}?inspect=true`}
+                style={{ padding: '8px 16px', background: 'none', border: '1px solid var(--color-border)', color: 'var(--color-text)', borderRadius: '8px', cursor: 'pointer', fontSize: '14px', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '6px' }}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                Inspiser
+              </Link>
+              <button onClick={handleDelete} style={{ padding: '8px 16px', background: 'none', border: '1px solid #ef4444', color: '#ef4444', borderRadius: '8px', cursor: 'pointer', fontSize: '14px' }}>
+                Slett kunde
+              </button>
+            </div>
           )}
         </div>
 
         <div className="card" style={{ maxWidth: '700px' }}>
-          <form onSubmit={handleSave} style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            {isNew && (
-              <div className="form-group">
-                <label className="form-label">ID (slug, f.eks. butikk-oslo)</label>
-                <input className="form-input" value={form.id} onChange={e => setForm({ ...form, id: e.target.value })} required pattern="[a-z0-9-]+" placeholder="butikk-oslo" />
+          <form onSubmit={handleSave} style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
+
+            {/* Bedriftsinformasjon */}
+            <section style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <h3 style={{ fontSize: '12px', fontWeight: '700', color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', margin: 0 }}>Bedriftsinformasjon</h3>
+
+              <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-end' }}>
+                <div className="form-group" style={{ flex: 1, margin: 0 }}>
+                  <label className="form-label">Organisasjonsnummer</label>
+                  <input
+                    className="form-input"
+                    value={form.orgnr || ''}
+                    onChange={e => setForm({ ...form, orgnr: e.target.value })}
+                    placeholder="123 456 789"
+                    maxLength={11}
+                  />
+                </div>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => fetchBrreg(form.orgnr)}
+                  disabled={brregLoading}
+                  style={{ whiteSpace: 'nowrap' }}
+                >
+                  {brregLoading ? 'Henter...' : 'Hent fra Brreg'}
+                </button>
               </div>
-            )}
-            <div className="form-group">
-              <label className="form-label">Bedriftsnavn</label>
-              <input className="form-input" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} required />
-            </div>
-            <div className="form-group">
-              <label className="form-label">Domene</label>
-              <input className="form-input" value={form.domain || ''} onChange={e => setForm({ ...form, domain: e.target.value })} placeholder="https://butikk.no" />
-            </div>
-            <div className="form-group">
-              <label className="form-label">Pakke</label>
-              <select className="form-input" value={form.plan} onChange={e => setForm({ ...form, plan: e.target.value })}>
-                <option value="standard">Standard</option>
-                <option value="profesjonell">Profesjonell</option>
-                <option value="enterprise">Enterprise</option>
-              </select>
-            </div>
-            <div className="form-group">
-              <label className="form-label">Moduler (komma-separert, f.eks. kolliretur, booking)</label>
-              <input className="form-input" value={form.modules} onChange={e => setForm({ ...form, modules: e.target.value })} placeholder="kolliretur, booking" />
-            </div>
-            <div className="form-group">
-              <label className="form-label">Eskalerings-epost</label>
-              <input className="form-input" type="email" value={form.escalation_email || ''} onChange={e => setForm({ ...form, escalation_email: e.target.value })} />
-            </div>
-            <div className="form-group">
-              <label className="form-label">Chatbot-tittel</label>
-              <input className="form-input" value={form.chatbot_title || ''} onChange={e => setForm({ ...form, chatbot_title: e.target.value })} />
-            </div>
-            <div className="form-group">
-              <label className="form-label">Webhook URL (n8n)</label>
-              <input className="form-input" value={form.webhook_url || ''} onChange={e => setForm({ ...form, webhook_url: e.target.value })} placeholder="https://n8n.helkrypt.no/webhook/..." />
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <input type="checkbox" id="active" checked={form.active !== false} onChange={e => setForm({ ...form, active: e.target.checked })} />
-              <label htmlFor="active" style={{ fontSize: '14px' }}>Aktiv</label>
-            </div>
-            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', paddingTop: '8px' }}>
+              {brregError && <p style={{ color: '#ef4444', fontSize: '13px', margin: 0 }}>{brregError}</p>}
+
+              {isNew && (
+                <div className="form-group">
+                  <label className="form-label">ID (slug, f.eks. butikk-oslo)</label>
+                  <input className="form-input" value={form.id || ''} onChange={e => setForm({ ...form, id: e.target.value })} required pattern="[a-z0-9-]+" placeholder="butikk-oslo" />
+                </div>
+              )}
+
+              <div className="form-group">
+                <label className="form-label">Bedriftsnavn</label>
+                <input className="form-input" value={form.name || ''} onChange={e => setForm({ ...form, name: e.target.value })} required />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Fakturaadresse</label>
+                <input className="form-input" value={form.invoice_address || ''} onChange={e => setForm({ ...form, invoice_address: e.target.value })} placeholder="Storgata 1, 0150 Oslo" />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Nettsted</label>
+                <input className="form-input" value={form.domain || ''} onChange={e => setForm({ ...form, domain: e.target.value })} placeholder="https://butikk.no" />
+              </div>
+            </section>
+
+            {/* Innstillinger */}
+            <section style={{ display: 'flex', flexDirection: 'column', gap: '14px', borderTop: '1px solid var(--color-border)', paddingTop: '20px' }}>
+              <h3 style={{ fontSize: '12px', fontWeight: '700', color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', margin: 0 }}>Innstillinger</h3>
+
+              <div className="form-group">
+                <label className="form-label">Pakke</label>
+                <select className="form-input" value={form.plan || 'standard'} onChange={e => setForm({ ...form, plan: e.target.value })}>
+                  <option value="standard">Standard</option>
+                  <option value="profesjonell">Profesjonell</option>
+                  <option value="enterprise">Enterprise</option>
+                </select>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Moduler</label>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '6px' }}>
+                  {AVAILABLE_MODULES.map(mod => (
+                    <label
+                      key={mod.id}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '12px',
+                        cursor: 'pointer',
+                        padding: '10px 14px',
+                        border: `1px solid ${selectedModules.includes(mod.id) ? 'var(--color-accent)' : 'var(--color-border)'}`,
+                        borderRadius: '8px',
+                        background: selectedModules.includes(mod.id) ? 'var(--color-bg-subtle)' : 'transparent',
+                        transition: 'all 0.15s',
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedModules.includes(mod.id)}
+                        onChange={() => toggleModule(mod.id)}
+                        style={{ width: '16px', height: '16px', cursor: 'pointer', accentColor: 'var(--color-accent)' }}
+                      />
+                      <div>
+                        <div style={{ fontSize: '14px', fontWeight: '500' }}>{mod.label}</div>
+                        <div style={{ fontSize: '12px', color: 'var(--color-text-muted)' }}>{mod.description}</div>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Eskalerings-epost</label>
+                <input className="form-input" type="email" value={form.escalation_email || ''} onChange={e => setForm({ ...form, escalation_email: e.target.value })} />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Chatbot-tittel</label>
+                <input className="form-input" value={form.chatbot_title || ''} onChange={e => setForm({ ...form, chatbot_title: e.target.value })} />
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <input type="checkbox" id="active" checked={form.active !== false} onChange={e => setForm({ ...form, active: e.target.checked })} />
+                <label htmlFor="active" style={{ fontSize: '14px' }}>Aktiv</label>
+              </div>
+            </section>
+
+            {/* Avansert */}
+            <section style={{ display: 'flex', flexDirection: 'column', gap: '14px', borderTop: '1px solid var(--color-border)', paddingTop: '20px' }}>
+              <h3 style={{ fontSize: '12px', fontWeight: '700', color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', margin: 0 }}>Avansert</h3>
+
+              <div className="form-group">
+                <label className="form-label">n8n Webhook URL</label>
+                <input className="form-input" value={form.webhook_url || ''} onChange={e => setForm({ ...form, webhook_url: e.target.value })} placeholder="https://n8n.helkrypt.no/webhook/..." />
+                <p style={{ fontSize: '12px', color: 'var(--color-text-muted)', margin: '4px 0 0' }}>
+                  Brukes til å sende hendelser (f.eks. ny chathenvendelse) til automatiseringsflyter i n8n.
+                </p>
+              </div>
+            </section>
+
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', paddingTop: '4px' }}>
               <Link href="/admin" className="btn btn-secondary">Avbryt</Link>
               <button type="submit" className="btn btn-primary" disabled={saving}>
                 {saving ? 'Lagrer...' : 'Lagre'}

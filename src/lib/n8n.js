@@ -12,6 +12,7 @@ const N8N_WEBHOOK_SECRET = process.env.N8N_WEBHOOK_SECRET;
  * admin-notification        → 2uyAhk7AHE8RphsY
  * kolliretur-notification   → BtOmI51NC8kk7HnL
  * password-reset            → FprQ1NFgbPMUHRdK
+ * agent-feedback            → HFAc5DVGLFNETph5
  */
 
 /**
@@ -102,4 +103,19 @@ export async function sendKollireturnNotification({
  */
 export async function sendPasswordResetEmail({ to, name, resetUrl, expiresInMinutes = 60 }) {
   return callN8nWebhook('password-reset', { to, name, resetUrl, expiresInMinutes });
+}
+
+/**
+ * Send agent-feedback fra kundedashboard til Marius
+ * Workflow: helkrypt-agent-feedback (HFAc5DVGLFNETph5)
+ */
+export async function sendAgentFeedback({
+  recipient, replyTo, subject, html,
+  feedback, conversationId, chatlogMarkdown, attachments,
+}) {
+  return callN8nWebhook('agent-feedback', {
+    type: 'agent_feedback',
+    recipient, replyTo, subject, html,
+    feedback, conversationId, chatlogMarkdown, attachments,
+  });
 }
