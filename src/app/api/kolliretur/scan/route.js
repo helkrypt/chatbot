@@ -1,3 +1,1 @@
-export function POST() {
-  return new Response(null, { status: 410 })
-}
+export { POST } from '@/modules/kolliretur/api/scan/route'
