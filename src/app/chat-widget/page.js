@@ -21,10 +21,37 @@ export default function ChatWidget() {
     const messagesEndRef = useRef(null);
     const fileInputRef = useRef(null);
 
+    const [clientName, setClientName] = useState('Kundeservice')
+    const [widgetTheme, setWidgetTheme] = useState({
+        primary_color: '#111827',
+        bubble_color: '#111827',
+        text_color: '#ffffff',
+        background_color: '#ffffff',
+        font_family: 'system-ui',
+        header_text: 'Kundeservice',
+        welcome_message: 'Hei! 👋 Hvordan kan jeg hjelpe deg i dag?',
+    })
+
+    useEffect(() => {
+        fetch(`/api/clients/${clientId}`)
+            .then(r => r.ok ? r.json() : null)
+            .then(data => {
+                if (data?.client) {
+                    if (data.client.name) setClientName(data.client.name)
+                    if (data.client.config?.widget_theme) {
+                        setWidgetTheme(prev => ({ ...prev, ...data.client.config.widget_theme }))
+                    } else if (data.client.chatbot_title) {
+                        setWidgetTheme(prev => ({ ...prev, header_text: data.client.chatbot_title }))
+                    }
+                }
+            })
+            .catch(() => {})
+    }, [clientId])
+
     // Tell the parent embed script to hide the iframe and show the bubble
     const handleClose = () => {
         try {
-            window.parent.postMessage({ type: 'elesco-close' }, '*');
+            window.parent.postMessage({ type: 'helkrypt-close' }, '*');
         } catch (e) {
             // standalone mode — nothing to do
         }
@@ -47,7 +74,7 @@ export default function ChatWidget() {
     // Listen for open signals from parent
     useEffect(() => {
         const onMessage = (e) => {
-            if (e.data && e.data.type === 'elesco-open') {
+            if (e.data && e.data.type === 'helkrypt-open') {
                 // Widget is now visible — nothing to do state-wise
             }
         };
@@ -58,7 +85,7 @@ export default function ChatWidget() {
     const WELCOME_MSG = {
         id: 'welcome',
         role: 'assistant',
-        content: 'Hei! 👋 Jeg er Elesco sin AI-assistent. Hvordan kan jeg hjelpe deg i dag?',
+        content: widgetTheme.welcome_message || 'Hei! 👋 Hvordan kan jeg hjelpe deg i dag?',
         timestamp: new Date().toISOString()
     };
 
@@ -207,13 +234,13 @@ export default function ChatWidget() {
 
 
     return (
-        <div className={styles.widgetContainer}>
-            <div className={styles.header}>
+        <div className={styles.widgetContainer} style={{ fontFamily: widgetTheme.font_family, background: widgetTheme.background_color }}>
+            <div className={styles.header} style={{ background: widgetTheme.primary_color, color: widgetTheme.text_color }}>
                 <div className={styles.headerContent}>
                     <div className={styles.logo}>
-                        <div className={styles.logoIcon}>⚡</div>
+                        <div className={styles.logoIcon} style={{ background: 'rgba(255,255,255,0.15)', color: widgetTheme.text_color }}>💬</div>
                         <div>
-                            <div className={styles.companyName}>Elesco Trondheim</div>
+                            <div className={styles.companyName} style={{ color: widgetTheme.text_color }}>{widgetTheme.header_text || clientName}</div>
                         </div>
                     </div>
                     <div className={styles.headerActions}>
@@ -324,6 +351,7 @@ export default function ChatWidget() {
                     type="submit"
                     className={styles.sendBtn}
                     disabled={isLoading || uploading || (!inputValue.trim() && !pendingFile)}
+                    style={{ background: widgetTheme.primary_color, color: widgetTheme.text_color }}
                 >
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
                         <path d="M22 2L11 13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
@@ -333,7 +361,7 @@ export default function ChatWidget() {
             </form>
 
             <div className={styles.footer}>
-                <span className={styles.poweredBy}>Elesco Trondheim bruker KI for kundeservice på hjemmesiden. Feil kan oppstå</span>
+                <span className={styles.poweredBy}>{clientName} bruker KI for kundeservice på hjemmesiden. Feil kan oppstå</span>
             </div>
         </div>
     );

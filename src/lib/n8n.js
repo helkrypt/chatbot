@@ -13,6 +13,7 @@ const N8N_WEBHOOK_SECRET = process.env.N8N_WEBHOOK_SECRET;
  * kolliretur-notification   → BtOmI51NC8kk7HnL
  * password-reset            → FprQ1NFgbPMUHRdK
  * agent-feedback            → HFAc5DVGLFNETph5
+ * website-scraper           → AcikisvbOXmKC03M
  */
 
 /**
@@ -103,6 +104,14 @@ export async function sendKollireturnNotification({
  */
 export async function sendPasswordResetEmail({ to, name, resetUrl, expiresInMinutes = 60 }) {
   return callN8nWebhook('password-reset', { to, name, resetUrl, expiresInMinutes });
+}
+
+/**
+ * Trigger nettside-scraper for å hente brand-farger og auto-generere widget-tema
+ * Workflow: helkrypt-website-scraper (AcikisvbOXmKC03M)
+ */
+export async function triggerWebsiteScraper({ clientId, websiteUrl }) {
+  return callN8nWebhook('website-scraper', { clientId, websiteUrl });
 }
 
 /**

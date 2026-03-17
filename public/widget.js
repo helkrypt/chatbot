@@ -242,6 +242,29 @@
                 b.style.setProperty('z-index', '2147483646', 'important');
             }
         }, 2000);
+
+        /* ── DYNAMIC THEME: hent widget_theme fra API og oppdater bubble ─── */
+        fetch(_baseUrl + '/api/clients/' + _clientId)
+            .then(function (r) { return r.ok ? r.json() : null; })
+            .then(function (data) {
+                var theme = data && data.client && data.client.config && data.client.config.widget_theme;
+                if (!theme) return;
+                var b = document.getElementById('helkrypt-chat-bubble');
+                var t = document.getElementById('helkrypt-chat-tooltip');
+                var w = document.getElementById('helkrypt-chat-iframe-wrap');
+                if (theme.bubble_color && b) {
+                    b.style.setProperty('background', theme.bubble_color, 'important');
+                }
+                if (theme.bubble_size && b) {
+                    b.style.setProperty('width', theme.bubble_size + 'px', 'important');
+                    b.style.setProperty('height', theme.bubble_size + 'px', 'important');
+                }
+                if (theme.position === 'bottom-left') {
+                    if (b) { b.style.setProperty('right', 'auto', 'important'); b.style.setProperty('left', '24px', 'important'); }
+                    if (t) { t.style.setProperty('right', 'auto', 'important'); t.style.setProperty('left', '24px', 'important'); }
+                    if (w) { w.style.setProperty('right', 'auto', 'important'); w.style.setProperty('left', 'max(12px, env(safe-area-inset-left))', 'important'); }
+                }
+            }).catch(function () {});
     }
 
 })();

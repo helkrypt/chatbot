@@ -45,6 +45,17 @@ export async function PATCH(req, { params }) {
   const updates = Object.fromEntries(Object.entries(body).filter(([k]) => allowed.includes(k)))
 
   const admin = createAdminClient()
+
+  // Merge config JSONB i stedet for å overskrive hele feltet
+  if (updates.config) {
+    const { data: existing } = await admin
+      .from('clients')
+      .select('config')
+      .eq('id', clientId)
+      .single()
+    updates.config = { ...(existing?.config || {}), ...updates.config }
+  }
+
   const { data, error } = await admin
     .from('clients')
     .update(updates)

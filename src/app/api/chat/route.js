@@ -357,19 +357,58 @@ export async function POST(request) {
                     console.error('Failed to create inquiry:', inquiryError);
                 } else if (inquiryData) {
                     console.log('Inquiry created successfully:', inquiryData.id);
-                    await sendEmail({
-                        to: process.env.ADMIN_EMAIL || 'marius@helkrypt.no',
-                        subject: `Ny henvendelse: ${inquiryData.subject}`,
-                        html: `<div style="font-family:sans-serif;max-width:600px">
-                            <h2>Ny henvendelse fra chat</h2>
-                            <p><strong>Kunde:</strong> ${inquiryData.customer_name} (${inquiryData.customer_email || 'ingen e-post'})</p>
-                            <p><strong>Telefon:</strong> ${inquiryData.customer_phone || 'ikke oppgitt'}</p>
-                            <p><strong>Emne:</strong> ${inquiryData.subject}</p>
-                            <p><strong>Beskrivelse:</strong><br>${inquiryData.message}</p>
-                            <a href="${process.env.NEXT_PUBLIC_APP_URL}/inquiries/${inquiryData.id}" style="background:#0284c7;color:white;padding:12px 24px;text-decoration:none;border-radius:6px;display:inline-block">Gå til sak</a>
-                        </div>`,
-                        clientId,
-                    }).catch(err => console.error('Admin notification error:', err));
+
+                    // Hent alle brukere i klienten med notify_on_escalation = true
+                    const { data: notifyProfiles } = await supabase
+                        .from('profiles')
+                        .select('id')
+                        .eq('client_id', clientId)
+                        .eq('notify_on_escalation', true)
+
+                    // Hent e-postadresser for disse brukerne via auth-tabellen
+                    let notifyEmails = []
+                    if (notifyProfiles && notifyProfiles.length > 0) {
+                        const emailResults = await Promise.all(
+                            notifyProfiles.map(async (p) => {
+                                try {
+                                    const { data: { user: authUser } } = await supabase.auth.admin.getUserById(p.id)
+                                    return authUser?.email || null
+                                } catch { return null }
+                            })
+                        )
+                        notifyEmails = emailResults.filter(Boolean)
+                    }
+
+                    // Legg alltid til sysadmin-e-post
+                    const allRecipients = [...new Set([process.env.ADMIN_EMAIL || 'marius@helkrypt.no', ...notifyEmails])]
+
+                    const timestamp = new Date().toLocaleString('nb-NO', { timeZone: 'Europe/Oslo' })
+                    const inquiryUrl = `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/${clientId}/conversations`
+                    const escalationHtml = `<div style="font-family:-apple-system,sans-serif;max-width:600px">
+                        <div style="background:#dc2626;padding:20px 32px;border-radius:8px 8px 0 0">
+                          <h2 style="margin:0;color:#fff;font-size:17px">🔔 Ny henvendelse fra chat</h2>
+                          <p style="margin:4px 0 0;color:#fca5a5;font-size:13px">${client.chatbot_title || 'Kundeservice'} · ${timestamp}</p>
+                        </div>
+                        <div style="padding:24px 32px;background:#fff;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 8px 8px">
+                          <table style="width:100%;border-collapse:collapse;border:1px solid #e5e7eb;border-radius:6px;overflow:hidden;margin-bottom:20px">
+                            <tr><td style="padding:9px 14px;font-size:13px;font-weight:600;color:#6b7280;background:#f9fafb;width:120px">Navn</td><td style="padding:9px 14px;font-size:14px">${inquiryData.customer_name}</td></tr>
+                            <tr><td style="padding:9px 14px;font-size:13px;font-weight:600;color:#6b7280;background:#f9fafb;border-top:1px solid #e5e7eb">E-post</td><td style="padding:9px 14px;font-size:14px;border-top:1px solid #e5e7eb">${inquiryData.customer_email || '—'}</td></tr>
+                            <tr><td style="padding:9px 14px;font-size:13px;font-weight:600;color:#6b7280;background:#f9fafb;border-top:1px solid #e5e7eb">Telefon</td><td style="padding:9px 14px;font-size:14px;border-top:1px solid #e5e7eb">${inquiryData.customer_phone || '—'}</td></tr>
+                          </table>
+                          <p style="font-size:15px;font-weight:600;margin:0 0 8px;color:#111827">${inquiryData.subject}</p>
+                          <div style="background:#f9fafb;border-radius:6px;padding:14px;color:#374151;font-size:14px;line-height:1.7;margin-bottom:20px">${inquiryData.message}</div>
+                          <a href="${inquiryUrl}" style="background:#111827;color:#fff;padding:12px 22px;text-decoration:none;border-radius:6px;display:inline-block;font-size:14px;font-weight:600">Åpne i dashboard →</a>
+                        </div>
+                    </div>`
+
+                    await Promise.all(allRecipients.map(to =>
+                        sendEmail({
+                            to,
+                            subject: `Ny henvendelse: ${inquiryData.subject}`,
+                            html: escalationHtml,
+                            clientId,
+                        }).catch(err => console.error(`Escalation email feilet for ${to}:`, err))
+                    ));
                     await notifyClientWebhook(client, 'ticket.created', {
                         ticketId: inquiryData.id,
                         summary: inquiryData.subject,

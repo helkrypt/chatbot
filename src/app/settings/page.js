@@ -21,6 +21,12 @@ function SettingsPageInner() {
     const [openingHours, setOpeningHours] = useState([])
     const [newHour, setNewHour] = useState({ category: 'regular', label: '', hours: '', specific_date: '' })
 
+    // Widget theme
+    const DEFAULT_THEME = { primary_color: '#111827', bubble_color: '#111827', text_color: '#ffffff', background_color: '#ffffff', font_family: 'system-ui', bubble_size: 64, position: 'bottom-right', border_radius: 16, header_text: 'Kundeservice', welcome_message: 'Hei! Hvordan kan jeg hjelpe deg?' }
+    const [widgetTheme, setWidgetTheme] = useState(DEFAULT_THEME)
+    const [savingTheme, setSavingTheme] = useState(false)
+    const [themeSaved, setThemeSaved] = useState(false)
+
     // Install assistant
     const SNIPPET = clientId
         ? `<!-- Helkrypt AI Chat Widget -->\n<script src="https://app.helkrypt.no/widget.js" data-client="${clientId}" defer></script>`
@@ -86,6 +92,17 @@ function SettingsPageInner() {
         const { data: hoursData } = await hoursQuery
         if (hoursData) {
             setOpeningHours(hoursData)
+        }
+
+        // Fetch widget theme from clients table
+        if (effectiveClientId) {
+            const res = await fetch(`/api/clients/${effectiveClientId}`)
+            if (res.ok) {
+                const { client } = await res.json()
+                if (client?.config?.widget_theme) {
+                    setWidgetTheme({ ...DEFAULT_THEME, ...client.config.widget_theme })
+                }
+            }
         }
 
         setLoading(false)
@@ -204,6 +221,22 @@ function SettingsPageInner() {
 
     const handleInstallKey = (e) => {
         if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleInstallSend() }
+    }
+
+    const handleSaveTheme = async () => {
+        setSavingTheme(true)
+        const res = await fetch(`/api/clients/${clientId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ config: { widget_theme: widgetTheme } }),
+        })
+        if (res.ok) {
+            setThemeSaved(true)
+            setTimeout(() => setThemeSaved(false), 2500)
+        } else {
+            alert('Feil ved lagring av tema')
+        }
+        setSavingTheme(false)
     }
 
     const copySnippet = () => {
@@ -374,6 +407,149 @@ function SettingsPageInner() {
                                     >
                                         {updating ? 'Sender forespørsel...' : 'Send forespørsel'}
                                     </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Widget Customization Card */}
+                    <div className="card">
+                        <div className="card-header">
+                            <h2 className="card-title">Tilpass Chat-Widget</h2>
+                        </div>
+                        <div style={{ padding: '24px' }}>
+                            <p style={{ marginBottom: '20px', color: 'var(--color-text-muted)', fontSize: '14px' }}>
+                                Tilpass utseendet på chat-widgeten. Farger settes automatisk basert på nettstedet ditt under onboarding, men kan overstyres her.
+                            </p>
+
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '32px', alignItems: 'start' }}>
+                                {/* Controls */}
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                                        {[
+                                            { key: 'primary_color', label: 'Primærfarge' },
+                                            { key: 'bubble_color', label: 'Boble-farge' },
+                                            { key: 'text_color', label: 'Tekst på header' },
+                                            { key: 'background_color', label: 'Bakgrunnsfarge' },
+                                        ].map(({ key, label }) => (
+                                            <div key={key}>
+                                                <label style={{ display: 'block', fontSize: '12px', color: 'var(--color-text-muted)', marginBottom: '6px' }}>{label}</label>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                    <input
+                                                        type="color"
+                                                        value={widgetTheme[key]}
+                                                        onChange={e => setWidgetTheme({ ...widgetTheme, [key]: e.target.value })}
+                                                        style={{ width: '40px', height: '36px', padding: '2px', border: '1px solid var(--color-border)', borderRadius: '6px', cursor: 'pointer' }}
+                                                    />
+                                                    <input
+                                                        className="form-input"
+                                                        value={widgetTheme[key]}
+                                                        onChange={e => setWidgetTheme({ ...widgetTheme, [key]: e.target.value })}
+                                                        style={{ flex: 1, fontFamily: 'monospace', fontSize: '13px' }}
+                                                        maxLength={7}
+                                                    />
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+
+                                    <div className="form-group" style={{ margin: 0 }}>
+                                        <label className="form-label">Skrifttype</label>
+                                        <select className="form-input" value={widgetTheme.font_family} onChange={e => setWidgetTheme({ ...widgetTheme, font_family: e.target.value })}>
+                                            <option value="system-ui">System (standard)</option>
+                                            <option value="'Segoe UI', sans-serif">Segoe UI</option>
+                                            <option value="Georgia, serif">Georgia (serif)</option>
+                                            <option value="'Courier New', monospace">Monospace</option>
+                                        </select>
+                                    </div>
+
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                                        <div className="form-group" style={{ margin: 0 }}>
+                                            <label className="form-label">Posisjon</label>
+                                            <select className="form-input" value={widgetTheme.position} onChange={e => setWidgetTheme({ ...widgetTheme, position: e.target.value })}>
+                                                <option value="bottom-right">Høyre nede</option>
+                                                <option value="bottom-left">Venstre nede</option>
+                                            </select>
+                                        </div>
+                                        <div className="form-group" style={{ margin: 0 }}>
+                                            <label className="form-label">Boble-størrelse (px)</label>
+                                            <input className="form-input" type="number" min="40" max="80" value={widgetTheme.bubble_size} onChange={e => setWidgetTheme({ ...widgetTheme, bubble_size: Number(e.target.value) })} />
+                                        </div>
+                                    </div>
+
+                                    <div className="form-group" style={{ margin: 0 }}>
+                                        <label className="form-label">Chat-tittel</label>
+                                        <input className="form-input" value={widgetTheme.header_text} onChange={e => setWidgetTheme({ ...widgetTheme, header_text: e.target.value })} />
+                                    </div>
+
+                                    <div className="form-group" style={{ margin: 0 }}>
+                                        <label className="form-label">Velkomstmelding</label>
+                                        <input className="form-input" value={widgetTheme.welcome_message} onChange={e => setWidgetTheme({ ...widgetTheme, welcome_message: e.target.value })} />
+                                    </div>
+
+                                    <div style={{ display: 'flex', gap: '10px' }}>
+                                        <button className="btn btn-primary" onClick={handleSaveTheme} disabled={savingTheme}>
+                                            {savingTheme ? 'Lagrer...' : themeSaved ? '✓ Lagret!' : 'Lagre tema'}
+                                        </button>
+                                        <button className="btn btn-secondary" onClick={() => setWidgetTheme(DEFAULT_THEME)}>
+                                            Tilbakestill
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {/* Live preview */}
+                                <div>
+                                    <p style={{ fontSize: '12px', fontWeight: '600', color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '12px' }}>Forhåndsvisning</p>
+                                    <div style={{ background: '#e5e7eb', borderRadius: '12px', padding: '20px', minHeight: '320px', position: 'relative', overflow: 'hidden' }}>
+                                        {/* Mock chat window */}
+                                        <div style={{
+                                            background: widgetTheme.background_color,
+                                            borderRadius: '12px',
+                                            boxShadow: '0 8px 32px rgba(0,0,0,0.2)',
+                                            overflow: 'hidden',
+                                            width: '260px',
+                                            margin: '0 auto',
+                                            fontFamily: widgetTheme.font_family,
+                                        }}>
+                                            {/* Header */}
+                                            <div style={{ background: widgetTheme.primary_color, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                                <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={widgetTheme.text_color} strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                                                </div>
+                                                <span style={{ color: widgetTheme.text_color, fontWeight: '600', fontSize: '14px' }}>{widgetTheme.header_text}</span>
+                                            </div>
+                                            {/* Messages */}
+                                            <div style={{ padding: '14px', display: 'flex', flexDirection: 'column', gap: '10px', minHeight: '140px' }}>
+                                                <div style={{ background: '#f3f4f6', borderRadius: '12px 12px 12px 4px', padding: '10px 12px', fontSize: '12px', maxWidth: '85%', color: '#1f2937' }}>
+                                                    {widgetTheme.welcome_message}
+                                                </div>
+                                                <div style={{ background: widgetTheme.primary_color, borderRadius: '12px 12px 4px 12px', padding: '10px 12px', fontSize: '12px', maxWidth: '80%', alignSelf: 'flex-end', color: widgetTheme.text_color }}>
+                                                    Hei, jeg lurer på...
+                                                </div>
+                                            </div>
+                                            {/* Input */}
+                                            <div style={{ borderTop: '1px solid #e5e7eb', padding: '10px 12px', display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                                <div style={{ flex: 1, background: '#f9fafb', borderRadius: '8px', padding: '8px 12px', fontSize: '11px', color: '#9ca3af' }}>Skriv en melding...</div>
+                                                <div style={{ width: '28px', height: '28px', background: widgetTheme.primary_color, borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={widgetTheme.text_color} strokeWidth="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        {/* Bubble */}
+                                        <div style={{
+                                            position: 'absolute',
+                                            [widgetTheme.position === 'bottom-left' ? 'left' : 'right']: '12px',
+                                            bottom: '12px',
+                                            width: `${Math.min(widgetTheme.bubble_size, 56)}px`,
+                                            height: `${Math.min(widgetTheme.bubble_size, 56)}px`,
+                                            background: widgetTheme.bubble_color,
+                                            borderRadius: '50%',
+                                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                            boxShadow: '0 4px 16px rgba(0,0,0,0.2)',
+                                        }}>
+                                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={widgetTheme.text_color} strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>

@@ -77,7 +77,7 @@ const clientNavItems = [
     { href: '/dashboard/[clientId]', label: 'Dashboard', icon: DashboardIcon },
     { href: '/conversations', label: 'Samtaler', icon: ChatIcon },
     { href: '/inquiries', label: 'Henvendelser', icon: InboxIcon },
-    { href: '/users', label: 'Brukere', icon: UsersIcon },
+    { href: '/dashboard/[clientId]/users', label: 'Brukere', icon: UsersIcon },
     { href: '/settings', label: 'Innstillinger', icon: SettingsIcon },
 ]
 
@@ -151,11 +151,12 @@ function SidebarInner({ isOpen, onClose }) {
     // Bygg riktige hrefs
     const resolvedNavItems = navToShow.map(item => {
         let href = item.href
-        if (href === '/dashboard/[clientId]') {
-            href = effectiveClientId ? `/dashboard/${effectiveClientId}` : '/dashboard'
+        if (href.includes('/dashboard/[clientId]')) {
+            href = effectiveClientId
+                ? href.replace('/dashboard/[clientId]', `/dashboard/${effectiveClientId}`)
+                : href.replace('/dashboard/[clientId]', '/dashboard')
             if (isInspecting && effectiveClientId) href += `?inspect=true`
         } else if (isInspecting && effectiveClientId) {
-            // Inspect-modus: legg til inspect + client_id som query params
             href = `${href}?inspect=true&client_id=${effectiveClientId}`
         }
         return { ...item, href }
@@ -197,7 +198,7 @@ function SidebarInner({ isOpen, onClose }) {
                             const Icon = item.icon
                             const hrefBase = item.href.split('?')[0]
                             const isActive = pathname === hrefBase ||
-                                (hrefBase !== '/' && hrefBase !== '/admin' && pathname.startsWith(hrefBase))
+                                (hrefBase !== '/' && hrefBase !== '/admin' && hrefBase.length > 10 && pathname.startsWith(hrefBase))
 
                             return (
                                 <Link

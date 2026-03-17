@@ -65,6 +65,9 @@ export default function AdminClientPage() {
       ...client,
       orgnr: client.config?.orgnr || '',
       invoice_address: client.config?.invoice_address || '',
+      contact_name: client.config?.contact_name || '',
+      contact_phone: client.config?.contact_phone || '',
+      contact_email: client.config?.contact_email || '',
     })
     setLoading(false)
   }
@@ -96,6 +99,9 @@ export default function AdminClientPage() {
           active: true,
           orgnr: clean,
           invoice_address: addrLine,
+          contact_name: '',
+          contact_phone: '',
+          contact_email: '',
         })
         setShowOrgnrSearch(false)
       } else {
@@ -123,14 +129,18 @@ export default function AdminClientPage() {
     e.preventDefault()
     setSaving(true)
 
-    const { orgnr, invoice_address, ...rest } = form
+    const { orgnr, invoice_address, contact_name, contact_phone, contact_email, ...rest } = form
     const payload = {
       ...rest,
       modules: selectedModules,
+      escalation_email: rest.escalation_email || contact_email || '',
       config: {
         ...(client?.config || {}),
         ...(orgnr ? { orgnr } : {}),
         ...(invoice_address ? { invoice_address } : {}),
+        ...(contact_name ? { contact_name } : {}),
+        ...(contact_phone ? { contact_phone } : {}),
+        ...(contact_email ? { contact_email } : {}),
       },
     }
 
@@ -228,7 +238,7 @@ export default function AdminClientPage() {
               <button
                 type="button"
                 onClick={() => {
-                  setForm({ id: '', name: '', domain: '', plan: 'standard', escalation_email: '', chatbot_title: 'Kundeservice', active: true, orgnr: '', invoice_address: '' })
+                  setForm({ id: '', name: '', domain: '', plan: 'standard', escalation_email: '', chatbot_title: 'Kundeservice', active: true, orgnr: '', invoice_address: '', contact_name: '', contact_phone: '', contact_email: '' })
                   setShowOrgnrSearch(false)
                 }}
                 style={{ background: 'none', border: 'none', color: 'var(--color-text-muted)', fontSize: '13px', cursor: 'pointer', textAlign: 'left', padding: 0 }}
@@ -323,6 +333,26 @@ export default function AdminClientPage() {
                 <label className="form-label">Nettsted</label>
                 <input className="form-input" value={form.domain || ''} onChange={e => setForm({ ...form, domain: e.target.value })} placeholder="https://butikk.no" />
               </div>
+
+              <div style={{ borderTop: '1px solid var(--color-border)', paddingTop: '14px', marginTop: '2px' }}>
+                <h4 style={{ fontSize: '11px', fontWeight: '700', color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 12px' }}>Kontaktperson</h4>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label">Navn</label>
+                    <input className="form-input" value={form.contact_name || ''} onChange={e => setForm({ ...form, contact_name: e.target.value })} placeholder="Ola Nordmann" />
+                  </div>
+                  <div style={{ display: 'flex', gap: '10px' }}>
+                    <div className="form-group" style={{ flex: 1, margin: 0 }}>
+                      <label className="form-label">Telefon</label>
+                      <input className="form-input" type="tel" value={form.contact_phone || ''} onChange={e => setForm({ ...form, contact_phone: e.target.value })} placeholder="+47 400 00 000" />
+                    </div>
+                    <div className="form-group" style={{ flex: 2, margin: 0 }}>
+                      <label className="form-label">E-post <span style={{ color: 'var(--color-text-muted)', fontWeight: 400 }}>(brukes som eskalerings-epost)</span></label>
+                      <input className="form-input" type="email" value={form.contact_email || ''} onChange={e => setForm({ ...form, contact_email: e.target.value })} placeholder="ola@bedrift.no" />
+                    </div>
+                  </div>
+                </div>
+              </div>
             </section>
 
             {/* Innstillinger */}
@@ -372,8 +402,8 @@ export default function AdminClientPage() {
               </div>
 
               <div className="form-group">
-                <label className="form-label">Eskalerings-epost</label>
-                <input className="form-input" type="email" value={form.escalation_email || ''} onChange={e => setForm({ ...form, escalation_email: e.target.value })} />
+                <label className="form-label">Eskalerings-epost <span style={{ color: 'var(--color-text-muted)', fontWeight: 400 }}>(standard: kontaktpersonens e-post)</span></label>
+                <input className="form-input" type="email" value={form.escalation_email || ''} onChange={e => setForm({ ...form, escalation_email: e.target.value })} placeholder={form.contact_email || ''} />
               </div>
 
               <div className="form-group">

@@ -1,6 +1,6 @@
 import { createAdminClient } from '@/lib/supabase-admin'
 import { createClient } from '@/lib/supabase-server'
-import { triggerClientOnboarding, notifyAdmin } from '@/lib/n8n'
+import { triggerClientOnboarding, triggerWebsiteScraper, notifyAdmin } from '@/lib/n8n'
 
 async function getSysadminUser() {
   const supabase = await createClient()
@@ -61,6 +61,29 @@ export async function POST(req) {
 
   if (error) return Response.json({ error: error.message }, { status: 500 })
 
+  // Auto-opprett admin-bruker via Supabase invite
+  const adminEmail = config?.contact_email || body.escalationEmail
+  if (adminEmail) {
+    try {
+      const { data: inviteData, error: inviteErr } = await admin.auth.admin.inviteUserByEmail(adminEmail, {
+        data: { role: 'admin', client_id: data.id },
+        redirectTo: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/${data.id}`,
+      })
+      if (inviteErr) {
+        console.error('[Invite] Klarte ikke invitere admin-bruker:', inviteErr.message)
+      } else if (inviteData?.user?.id) {
+        const { error: profileErr } = await admin.from('profiles').insert({
+          id: inviteData.user.id,
+          role: 'admin',
+          client_id: data.id,
+        })
+        if (profileErr) console.error('[Invite] Klarte ikke opprette profil:', profileErr.message)
+      }
+    } catch (err) {
+      console.error('[Invite] Uventet feil:', err.message)
+    }
+  }
+
   // Trigger onboarding workflow (ikke-blokkerende)
   try {
     await triggerClientOnboarding({
@@ -81,6 +104,14 @@ export async function POST(req) {
       clientName: name,
       severity: 'error',
     }).catch(() => {});
+  }
+
+  // Trigger nettside-scraper for auto-generering av widget-tema (ikke-blokkerende)
+  if (domain) {
+    triggerWebsiteScraper({
+      clientId: data.id,
+      websiteUrl: domain.startsWith('http') ? domain : `https://${domain}`,
+    }).catch(err => console.error('[WebsiteScraper] Feilet:', err.message));
   }
 
   return Response.json({ client: data }, { status: 201 })
