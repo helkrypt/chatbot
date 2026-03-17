@@ -46,7 +46,7 @@ export async function POST(request) {
 
                 <div style="background: #f8f9fc; padding: 16px 24px; border-radius: 0 0 12px 12px; border: 1px solid #e5e7eb; border-top: none;">
                     <p style="margin: 0; font-size: 12px; color: #6b7280;">
-                        Denne tilbakemeldingen ble sendt fra Elesco Trondheim kundeservice-dashbordet for endring av systemprompt.
+                        Sendt fra Helkrypt AI dashbordet.
                     </p>
                 </div>
             </div>
@@ -61,7 +61,7 @@ export async function POST(request) {
         const chatMarkdownBase64 = Buffer.from(chatMarkdown).toString('base64')
 
         // Send via n8n webhook (Dedicated webhook for feedback)
-        const n8nUrl = process.env.N8N_FEEDBACK_WEBHOOK_URL || 'https://n8n.helkrypt.no/webhook/elesco-feedback'
+        const n8nUrl = process.env.N8N_FEEDBACK_WEBHOOK_URL
         if (n8nUrl) {
             await fetch(n8nUrl, {
                 method: 'POST',
