@@ -1,9 +1,9 @@
 'use client'
 
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useSearchParams, useParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, Suspense } from 'react'
 
 // Icons as SVG components
 const DashboardIcon = () => (
@@ -52,11 +52,11 @@ const InboxIcon = () => (
     </svg>
 )
 
-const PackageIcon = () => (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
-        <polyline points="3.27 6.96 12 12.01 20.73 6.96" />
-        <line x1="12" y1="22.08" x2="12" y2="12" />
+const BuildingIcon = () => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+         strokeLinecap="round" strokeLinejoin="round">
+        <rect x="3" y="3" width="18" height="18" rx="2" />
+        <path d="M9 3v18M15 3v18M3 9h18M3 15h18" />
     </svg>
 )
 
@@ -67,20 +67,31 @@ const XIcon = () => (
     </svg>
 )
 
-const navItems = [
-    { href: '/', label: 'Dashboard', icon: DashboardIcon },
+// SYSADMIN-navigasjon — kun kunder-oversikt
+const sysadminNavItems = [
+    { href: '/admin', label: 'Kunder', icon: BuildingIcon },
+]
+
+// KLIENT-navigasjon — vises for admin og agent
+const clientNavItems = [
+    { href: '/dashboard/[clientId]', label: 'Dashboard', icon: DashboardIcon },
     { href: '/conversations', label: 'Samtaler', icon: ChatIcon },
     { href: '/inquiries', label: 'Henvendelser', icon: InboxIcon },
-    { href: '/kolliretur', label: 'Kolliretur', icon: PackageIcon },
     { href: '/users', label: 'Brukere', icon: UsersIcon },
     { href: '/settings', label: 'Innstillinger', icon: SettingsIcon },
 ]
 
-export default function Sidebar({ isOpen, onClose }) {
+function SidebarInner({ isOpen, onClose }) {
     const pathname = usePathname()
+    const searchParams = useSearchParams()
+    const params = useParams()
     const [user, setUser] = useState(null)
     const [profile, setProfile] = useState(null)
+    const [client, setClient] = useState(null)
     const supabase = createClient()
+
+    const isInspecting = searchParams.get('inspect') === 'true'
+    const urlClientId = params?.clientId
 
     useEffect(() => {
         const getUser = async () => {
@@ -94,6 +105,15 @@ export default function Sidebar({ isOpen, onClose }) {
                     .eq('id', user.id)
                     .single()
                 setProfile(profile)
+
+                if (profile?.client_id && profile.role !== 'sysadmin') {
+                    const { data: clientData } = await supabase
+                        .from('clients')
+                        .select('name')
+                        .eq('id', profile.client_id)
+                        .single()
+                    setClient(clientData)
+                }
             }
         }
         getUser()
@@ -109,13 +129,33 @@ export default function Sidebar({ isOpen, onClose }) {
         return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
     }
 
-    // Filter nav items based on role
-    const filteredNavItems = navItems.filter(item => {
-        // Sysadmin sees everything
-        if (profile?.role === 'sysadmin') return true
-        // Admin sees Users and Settings
-        if ((item.label === 'Brukere' || item.label === 'Innstillinger') && profile?.role !== 'admin') {
-            return false
+    // Bestem hvilken meny som skal vises
+    const navToShow = (profile?.role === 'sysadmin' && !isInspecting)
+        ? sysadminNavItems
+        : clientNavItems
+
+    // Bestem hvilken clientId som gjelder for lenker
+    const effectiveClientId = isInspecting ? urlClientId : profile?.client_id
+
+    // Bygg riktige hrefs
+    const resolvedNavItems = navToShow.map(item => {
+        if (effectiveClientId) {
+            let href = item.href
+            if (href === '/dashboard/[clientId]') href = `/dashboard/${effectiveClientId}`
+            else if (href === '/conversations') href = `/dashboard/${effectiveClientId}/conversations`
+            else if (href === '/inquiries') href = `/dashboard/${effectiveClientId}/inquiries`
+            else if (href === '/users') href = `/dashboard/${effectiveClientId}/users`
+            else if (href === '/settings') href = `/dashboard/${effectiveClientId}/settings`
+            if (isInspecting) href = `${href}?inspect=true`
+            return { ...item, href }
+        }
+        return item
+    })
+
+    // Filtrer brukere/innstillinger for agent-rolle
+    const filteredNavItems = resolvedNavItems.filter(item => {
+        if (profile?.role === 'agent') {
+            if (item.label === 'Brukere' || item.label === 'Innstillinger') return false
         }
         return true
     })
@@ -129,8 +169,12 @@ export default function Sidebar({ isOpen, onClose }) {
             <aside className={`sidebar ${isOpen ? 'open' : ''}`}>
                 <div className="sidebar-header">
                     <div className="sidebar-logo">
-                        <div className="sidebar-logo-icon">E</div>
-                        <span className="sidebar-logo-text">Elesco</span>
+                        <div className="sidebar-logo-icon">H</div>
+                        <span className="sidebar-logo-text">
+                            {profile?.role === 'sysadmin' && !isInspecting
+                                ? 'Helkrypt AI'
+                                : (client?.name || 'Helkrypt AI')}
+                        </span>
                     </div>
                     <button className="close-sidebar" onClick={onClose} aria-label="Lukk meny">
                         <XIcon />
@@ -142,12 +186,13 @@ export default function Sidebar({ isOpen, onClose }) {
                         <div className="nav-section-title">Hovedmeny</div>
                         {filteredNavItems.map((item) => {
                             const Icon = item.icon
-                            const isActive = pathname === item.href ||
-                                (item.href !== '/' && pathname.startsWith(item.href))
+                            const hrefBase = item.href.split('?')[0]
+                            const isActive = pathname === hrefBase ||
+                                (hrefBase !== '/' && hrefBase !== '/admin' && pathname.startsWith(hrefBase))
 
                             return (
                                 <Link
-                                    key={item.href}
+                                    key={item.label}
                                     href={item.href}
                                     className={`nav-link ${isActive ? 'active' : ''}`}
                                     onClick={onClose}
@@ -184,5 +229,13 @@ export default function Sidebar({ isOpen, onClose }) {
                 </div>
             </aside>
         </>
+    )
+}
+
+export default function Sidebar({ isOpen, onClose }) {
+    return (
+        <Suspense fallback={null}>
+            <SidebarInner isOpen={isOpen} onClose={onClose} />
+        </Suspense>
     )
 }

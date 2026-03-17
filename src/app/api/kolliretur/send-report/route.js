@@ -1,1 +1,3 @@
-export { POST } from '@/modules/kolliretur/api/send-report/route'
+export function POST() {
+  return new Response(null, { status: 410 })
+}

@@ -10,12 +10,15 @@ export default function SettingsPage() {
     const [loading, setLoading] = useState(true)
     const [updating, setUpdating] = useState(false)
     const [userRole, setUserRole] = useState(null)
+    const [clientId, setClientId] = useState('')
 
     const [openingHours, setOpeningHours] = useState([])
     const [newHour, setNewHour] = useState({ category: 'regular', label: '', hours: '', specific_date: '' })
 
     // Install assistant
-    const SNIPPET = `<!-- Elesco Trondheim Chat Widget -->\n<script src="https://elesco-trondheim.vercel.app/elesco-chat.js" defer></script>`
+    const SNIPPET = clientId
+        ? `<!-- Helkrypt AI Chat Widget -->\n<script src="https://app.helkrypt.no/widget.js" data-client="${clientId}" defer></script>`
+        : `<!-- Helkrypt AI Chat Widget -->\n<script src="https://app.helkrypt.no/widget.js" data-client="DIN_KLIENT_ID" defer></script>`
     const [installMessages, setInstallMessages] = useState([
         { role: 'assistant', content: 'Hei! 👋 Jeg er installasjonsassistenten din. Jeg hjelper deg med å legge til chat-widgeten på nettsiden din.\n\nHvilken plattform bruker du? (f.eks. WordPress, Wix, Shopify, Squarespace, eller egendefinert HTML)' }
     ])
@@ -38,10 +41,11 @@ export default function SettingsPage() {
         if (user) {
             const { data: profile } = await supabase
                 .from('profiles')
-                .select('role')
+                .select('role, client_id')
                 .eq('id', user.id)
                 .single()
             setUserRole(profile?.role || 'agent')
+            setClientId(profile?.client_id || '')
         }
 
         // Fetch Prompt
@@ -74,36 +78,25 @@ export default function SettingsPage() {
 
         setUpdating(true)
         try {
-            const { data: { user } } = await supabase.auth.getUser()
-
-            const response = await fetch('/api/send-email', {
+            const response = await fetch('/api/update-prompt', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    to: 'marius@helkrypt.no',
-                    subject: 'Forespørsel om endring av systemprompt - Elesco Trondheim',
-                    html: `
-                        <h2>Forespørsel om endring av systemprompt</h2>
-                        <p><strong>Fra bruker:</strong> ${user?.email || 'Ukjent'}</p>
-                        <p><strong>Ønsket endring:</strong></p>
-                        <div style="background: #f3f4f6; padding: 15px; border-radius: 8px; font-style: italic;">
-                            ${instruction.replace(/\n/g, '<br>')}
-                        </div>
-                        <p>Vennligst logg inn og oppdater systemprompten manuelt i koden eller databasen.</p>
-                    `
-                })
+                    clientId,
+                    instruction: instruction.trim(),
+                    autoApprove: false,
+                }),
             })
 
+            const data = await response.json()
             if (response.ok) {
                 setInstruction('')
-                alert('Forespørselen din er sendt til marius@helkrypt.no for manuell behandling.')
+                alert(`Forespørselen er sendt til gjennomgang. Ny prompt-versjon ${data.version} venter på godkjenning.`)
             } else {
-                throw new Error('Kunne ikke sende e-post')
+                alert('Feil: ' + data.error)
             }
-
-        } catch (error) {
-            console.error(error)
-            alert('Feil ved sending av forespørsel: ' + error.message)
+        } catch (err) {
+            alert('Nettverksfeil: ' + err.message)
         } finally {
             setUpdating(false)
         }

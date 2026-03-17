@@ -39,6 +39,10 @@ export default function InquiryDetailPage() {
     const [feedbackText, setFeedbackText] = useState('')
     const [sendingFeedback, setSendingFeedback] = useState(false)
 
+    // Email preview modal state
+    const [showEmailModal, setShowEmailModal] = useState(false)
+    const [previewEmail, setPreviewEmail] = useState(null)
+
     useEffect(() => {
         loadData()
     }, [id])
@@ -115,10 +119,10 @@ export default function InquiryDetailPage() {
             .order('created_at', { ascending: true })
         setMessages(msgData || [])
 
-        // 5. Fetch Internal Notes
+        // 5. Fetch Internal Notes (inkl. sendte eposter)
         const { data: noteData } = await supabase
             .from('inquiry_notes')
-            .select('*, profiles(full_name, email)')
+            .select('*, profiles(full_name, email), sent_emails(id, subject, to_email, html_content, created_at)')
             .eq('inquiry_id', id)
             .order('created_at', { ascending: false })
         setNotes(noteData || [])
@@ -247,6 +251,14 @@ export default function InquiryDetailPage() {
         if (!emailContent.trim() || !inquiry.customer_email) return
         setSendingEmail(true)
         try {
+            const htmlBody = `
+                <div style="font-family: 'Segoe UI', Arial, sans-serif; color: #333; max-width: 600px; margin: 0 auto;">
+                    <div style="padding: 24px;">
+                        ${emailContent.replace(/\n/g, '<br>')}
+                    </div>
+                </div>
+            `
+
             const response = await fetch('/api/send-email', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -254,25 +266,35 @@ export default function InquiryDetailPage() {
                     to: inquiry.customer_email,
                     subject: emailSubject,
                     replyTo: userEmail,
-                    html: `
-                        <div style="font-family: 'Segoe UI', Arial, sans-serif; color: #333; max-width: 600px; margin: 0 auto;">
-                            <div style="padding: 24px;">
-                                ${emailContent.replace(/\n/g, '<br>')}
-                            </div>
-                        </div>
-                    `,
+                    html: htmlBody,
                     inquiryId: id
                 })
             })
 
             if (response.ok) {
-                alert('E-post sendt til kunden!')
-                // Add note that email was sent
+                // 1. Lagre sendt epost
+                const { data: savedEmail } = await supabase
+                    .from('sent_emails')
+                    .insert({
+                        inquiry_id: id,
+                        sent_by: userId,
+                        to_email: inquiry.customer_email,
+                        subject: emailSubject,
+                        html_content: htmlBody
+                    })
+                    .select()
+                    .single()
+
+                // 2. Opprett logg-note med referanse
                 await supabase.from('inquiry_notes').insert({
                     inquiry_id: id,
                     created_by: userId,
-                    content: `📧 Svar sendt til kunde:\n\nEmne: ${emailSubject}`
+                    content: `📧 Sendt epost til kunde`,
+                    sent_email_id: savedEmail?.id || null
                 })
+
+                // 3. Tøm felt og last inn på nytt
+                setEmailContent('')
                 loadData()
             } else {
                 alert('Kunne ikke sende e-post. Sjekk n8n-konfigurasjon.')
@@ -538,8 +560,36 @@ export default function InquiryDetailPage() {
                                 </div>
                                 <div style={{ flex: 1, overflowY: 'auto', maxHeight: '300px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
                                     {notes.map(note => (
-                                        <div key={note.id} style={{ background: '#f3f4f6', padding: '8px', borderRadius: '6px', fontSize: '13px' }}>
-                                            <div style={{ marginBottom: '4px' }}>{note.content}</div>
+                                        <div key={note.id} style={{
+                                            background: note.sent_email_id ? '#eff6ff' : '#f3f4f6',
+                                            padding: '8px',
+                                            borderRadius: '6px',
+                                            fontSize: '13px',
+                                            borderLeft: note.sent_email_id ? '3px solid #3b82f6' : 'none'
+                                        }}>
+                                            <div style={{ marginBottom: '4px' }}>
+                                                {note.content}
+                                                {note.sent_email_id && (
+                                                    <button
+                                                        onClick={() => {
+                                                            setPreviewEmail(note.sent_emails)
+                                                            setShowEmailModal(true)
+                                                        }}
+                                                        style={{
+                                                            background: 'none',
+                                                            border: 'none',
+                                                            color: '#3b82f6',
+                                                            cursor: 'pointer',
+                                                            fontSize: '13px',
+                                                            fontWeight: '600',
+                                                            padding: '0 0 0 6px',
+                                                            textDecoration: 'underline'
+                                                        }}
+                                                    >
+                                                        Se her
+                                                    </button>
+                                                )}
+                                            </div>
                                             <div style={{ fontSize: '10px', color: '#6b7280' }}>
                                                 {note.profiles?.full_name || 'Ukjent'} • {new Date(note.created_at).toLocaleString('no-NO')}
                                             </div>
@@ -550,6 +600,53 @@ export default function InquiryDetailPage() {
                         </div>
                     </div>
                 </div>
+
+                {/* Email Preview Modal */}
+                {showEmailModal && previewEmail && (
+                    <div style={{
+                        position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+                        background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)',
+                        display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 2000
+                    }} onClick={() => setShowEmailModal(false)}>
+                        <div style={{
+                            background: 'white', borderRadius: '16px',
+                            maxWidth: '680px', width: '90%', maxHeight: '85vh',
+                            display: 'flex', flexDirection: 'column',
+                            boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)',
+                            animation: 'modalPop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)'
+                        }} onClick={e => e.stopPropagation()}>
+                            <div style={{
+                                padding: '20px 24px',
+                                borderBottom: '1px solid #e5e7eb',
+                                display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
+                                flexShrink: 0
+                            }}>
+                                <div>
+                                    <h2 style={{ fontSize: '18px', fontWeight: '700', margin: '0 0 6px 0' }}>
+                                        📧 Sendt epost til kunde
+                                    </h2>
+                                    <div style={{ fontSize: '13px', color: '#6b7280', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                        <span><strong>Til:</strong> {previewEmail.to_email}</span>
+                                        <span><strong>Emne:</strong> {previewEmail.subject}</span>
+                                        <span><strong>Sendt:</strong> {new Date(previewEmail.created_at).toLocaleString('no-NO')}</span>
+                                    </div>
+                                </div>
+                                <button
+                                    onClick={() => setShowEmailModal(false)}
+                                    style={{ background: 'none', border: 'none', fontSize: '22px', cursor: 'pointer', color: '#6b7280' }}
+                                >✕</button>
+                            </div>
+                            <div style={{ flex: 1, overflow: 'auto' }}>
+                                <iframe
+                                    srcDoc={previewEmail.html_content}
+                                    style={{ width: '100%', height: '100%', minHeight: '350px', border: 'none', borderRadius: '0 0 16px 16px' }}
+                                    title="Epost innhold"
+                                    sandbox="allow-same-origin"
+                                />
+                            </div>
+                        </div>
+                    </div>
+                )}
 
                 {/* Feedback Modal */}
                 {showFeedbackModal && (

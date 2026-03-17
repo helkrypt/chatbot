@@ -2,8 +2,8 @@ import './globals.css'
 import PasswordChangeModal from '@/components/PasswordChangeModal'
 
 export const metadata = {
-  title: 'Elesco Kundeservice',
-  description: 'Admin dashboard for Elesco Trondheim kundeservice',
+  title: 'Helkrypt AI',
+  description: 'AI-drevet kundeserviceplattform',
 }
 
 export default function RootLayout({ children }) {

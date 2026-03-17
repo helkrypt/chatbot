@@ -1,22 +1,34 @@
-import { redirect } from 'next/navigation'
-import { createClient } from '@/lib/supabase-server'
-import { createAdminClient } from '@/lib/supabase-admin'
-import Sidebar from '@/components/Sidebar'
+'use client'
+
+import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import Sidebar from '@/components/Sidebar'
 
-export default async function AdminPage() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect('/login')
+export default function AdminPage() {
+  const router = useRouter()
+  const [clients, setClients] = useState(null)
+  const [loading, setLoading] = useState(true)
 
-  const admin = createAdminClient()
-  const { data: profile } = await admin.from('profiles').select('role').eq('id', user.id).single()
-  if (profile?.role !== 'sysadmin') redirect('/')
+  useEffect(() => {
+    fetch('/api/clients')
+      .then(res => {
+        if (res.status === 401) { router.push('/login'); return null }
+        if (!res.ok) throw new Error('Feil ved henting av kunder')
+        return res.json()
+      })
+      .then(data => {
+        if (data) setClients(data.clients)
+      })
+      .catch(err => console.error(err))
+      .finally(() => setLoading(false))
+  }, [router])
 
-  const { data: clients } = await admin
-    .from('clients')
-    .select('id, name, plan, modules, active, created_at')
-    .order('created_at', { ascending: false })
+  const totalClients = clients?.length || 0
+  const activeClients = clients?.filter(c => c.active).length || 0
+  const inactiveClients = totalClients - activeClients
+
+  if (loading) return null
 
   return (
     <div className="app-container">
@@ -27,6 +39,21 @@ export default async function AdminPage() {
           <Link href="/admin/clients/new" className="btn btn-primary">
             + Ny kunde
           </Link>
+        </div>
+
+        <div className="stats-grid" style={{ marginBottom: '24px' }}>
+          <div className="stat-card">
+            <div className="stat-label">Totalt kunder</div>
+            <div className="stat-value">{totalClients}</div>
+          </div>
+          <div className="stat-card">
+            <div className="stat-label">Aktive</div>
+            <div className="stat-value" style={{ color: '#059669' }}>{activeClients}</div>
+          </div>
+          <div className="stat-card">
+            <div className="stat-label">Inaktive</div>
+            <div className="stat-value" style={{ color: '#6b7280' }}>{inactiveClients}</div>
+          </div>
         </div>
 
         <div className="card">
@@ -40,15 +67,18 @@ export default async function AdminPage() {
                   <th>Moduler</th>
                   <th>Status</th>
                   <th>Opprettet</th>
+                  <th>Handlinger</th>
                 </tr>
               </thead>
               <tbody>
                 {clients?.map(c => (
-                  <tr key={c.id}>
-                    <td>
-                      <Link href={`/admin/clients/${c.id}`} style={{ color: 'var(--color-accent)', fontWeight: '500' }}>
-                        {c.name}
-                      </Link>
+                  <tr
+                    key={c.id}
+                    onClick={() => router.push(`/admin/clients/${c.id}`)}
+                    style={{ cursor: 'pointer' }}
+                  >
+                    <td style={{ color: 'var(--color-accent)', fontWeight: '500' }}>
+                      {c.name}
                     </td>
                     <td>
                       <code style={{ fontSize: '12px', background: 'var(--color-bg-subtle)', padding: '2px 6px', borderRadius: '4px' }}>
@@ -72,6 +102,34 @@ export default async function AdminPage() {
                     </td>
                     <td style={{ fontSize: '13px', color: 'var(--color-text-muted)' }}>
                       {new Date(c.created_at).toLocaleDateString('no-NO')}
+                    </td>
+                    <td onClick={e => e.stopPropagation()}>
+                      <div style={{ display: 'flex', gap: '8px' }}>
+                        <Link
+                          href={`/admin/clients/${c.id}`}
+                          style={{
+                            padding: '4px 12px', fontSize: '13px',
+                            background: 'var(--color-bg-subtle)',
+                            border: '1px solid var(--color-border)',
+                            borderRadius: '6px', textDecoration: 'none',
+                            color: 'var(--color-text)',
+                          }}
+                        >
+                          Rediger
+                        </Link>
+                        <Link
+                          href={`/dashboard/${c.id}?inspect=true`}
+                          style={{
+                            padding: '4px 12px', fontSize: '13px',
+                            background: '#fff7ed',
+                            border: '1px solid #fed7aa',
+                            borderRadius: '6px', textDecoration: 'none',
+                            color: '#c2410c',
+                          }}
+                        >
+                          Inspiser
+                        </Link>
+                      </div>
                     </td>
                   </tr>
                 ))}

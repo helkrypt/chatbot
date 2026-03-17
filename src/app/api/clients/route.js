@@ -1,5 +1,6 @@
 import { createAdminClient } from '@/lib/supabase-admin'
 import { createClient } from '@/lib/supabase-server'
+import { triggerClientOnboarding, notifyAdmin } from '@/lib/n8n'
 
 async function getSysadminUser() {
   const supabase = await createClient()
@@ -59,5 +60,28 @@ export async function POST(req) {
     .single()
 
   if (error) return Response.json({ error: error.message }, { status: 500 })
+
+  // Trigger onboarding workflow (ikke-blokkerende)
+  try {
+    await triggerClientOnboarding({
+      clientId: data.id,
+      companyName: name,
+      orgnr: body.orgnr || '',
+      websiteUrl: domain ? `https://${domain}` : '',
+      adminEmail: body.adminEmail || '',
+      adminName: body.adminName || '',
+    });
+  } catch (err) {
+    console.error('[Onboarding] n8n trigger feilet:', err);
+    await notifyAdmin({
+      type: 'onboarding_error',
+      title: 'Onboarding workflow feilet',
+      details: err.message,
+      clientId: data.id,
+      clientName: name,
+      severity: 'error',
+    }).catch(() => {});
+  }
+
   return Response.json({ client: data }, { status: 201 })
 }

@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase'
 import Sidebar from '@/components/Sidebar'
 import Navbar from '@/components/Navbar'
+import InspectBanner from '@/components/InspectBanner'
 
 export default function ClientDashboardPage() {
   const { clientId } = useParams()
@@ -37,8 +38,11 @@ export default function ClientDashboardPage() {
     const { data: profile } = await supabase.from('profiles').select('role, client_id').eq('id', user.id).single()
     if (!profile) { router.push('/login'); return }
 
-    // sysadmin sees all, admin sees only their own client
-    if (profile.role !== 'sysadmin' && profile.client_id !== clientId) {
+    // Sysadmin har alltid tilgang (inkludert inspect-modus)
+    if (profile.role === 'sysadmin') return
+
+    // Andre brukere: kun tilgang til eget klient-dashboard
+    if (profile.client_id !== clientId) {
       router.push('/')
     }
   }
@@ -183,6 +187,7 @@ export default function ClientDashboardPage() {
 
   return (
     <div className="app-container">
+      <InspectBanner clientId={clientId} clientName={client?.name} />
       <Sidebar isOpen={isSidebarOpen} onClose={() => setIsSidebarOpen(false)} />
       <main className="main-content">
         <Navbar onMenuClick={() => setIsSidebarOpen(true)} />

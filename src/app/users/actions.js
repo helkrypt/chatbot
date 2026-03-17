@@ -2,6 +2,7 @@
 
 import { createAdminClient } from '@/lib/supabase-admin'
 import { revalidatePath } from 'next/cache'
+import { sendWelcomeEmail, sendPasswordResetEmail } from '@/lib/n8n'
 
 export async function createUser(formData) {
     const supabaseAdmin = createAdminClient()
@@ -36,47 +37,14 @@ export async function createUser(formData) {
 
         if (profileError) throw profileError
 
-        // 3. Send welcome email
+        // 3. Send welcome email via n8n
         try {
-            const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://elesco-trondheim.vercel.app'
-            const webhookUrl = process.env.N8N_NOTIFICATION_WEBHOOK_URL || 'https://n8n.helkrypt.no/webhook/elesco-trondheim'
-
-            await fetch(webhookUrl, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    to: email,
-                    from: '"Elesco Trondheim" <chatbot@cityrtv.no>',
-                    subject: 'Velkommen til Elesco Trondheim Dashboard',
-                    html: `
-                        <div style="font-family: 'Segoe UI', Arial, sans-serif; color: #333; max-width: 600px; margin: 0 auto;">
-                            <div style="background: #0284c7; padding: 20px 24px; border-radius: 8px 8px 0 0;">
-                                <h1 style="color: white; margin: 0; font-size: 20px;">Velkommen til Elesco Trondheim!</h1>
-                            </div>
-                            <div style="background: #f9fafb; padding: 24px; border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 8px 8px;">
-                                <p>Hei ${fullName || 'der'},</p>
-                                <p>En administrator har opprettet en bruker for deg i Elesco Trondheim Dashboard.</p>
-                                
-                                <div style="background: white; padding: 16px; border-radius: 8px; margin: 20px 0; border: 1px solid #e5e7eb;">
-                                    <p style="margin: 0 0 8px 0;"><strong>Dine innloggingsdetaljer:</strong></p>
-                                    <p style="margin: 4px 0;"><strong>E-post:</strong> ${email}</p>
-                                    <p style="margin: 4px 0;"><strong>Midlertidig passord:</strong> ${password}</p>
-                                    <p style="margin: 4px 0;"><strong>Rolle:</strong> ${role === 'sysadmin' ? 'Systemadministrator' : role === 'admin' ? 'Administrator' : 'Kundeservice Agent'}</p>
-                                </div>
-
-                                <p style="color: #dc2626; font-weight: 600;">⚠️ Viktig: Du vil bli bedt om å endre passordet ditt ved første innlogging.</p>
-                                
-                                <a href="${appUrl}/login" style="background: #0284c7; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block; font-weight: 500; margin-top: 16px;">
-                                    Logg inn nå
-                                </a>
-                                
-                                <p style="margin-top: 24px; font-size: 14px; color: #6b7280;">
-                                    Hvis du har problemer med å logge inn, ta kontakt med din administrator.
-                                </p>
-                            </div>
-                        </div>
-                    `
-                })
+            await sendWelcomeEmail({
+                to: email,
+                name: fullName || email,
+                role,
+                clientId: 'elesco-trondheim',
+                clientName: 'Elesco Trondheim',
             })
         } catch (emailError) {
             console.error('Failed to send welcome email:', emailError)
@@ -145,46 +113,14 @@ export async function resetUserPassword(userId, userEmail, userName, newPassword
 
         if (profileError) throw profileError
 
-        // 3. Send email notification to user
+        // 3. Send password reset notification via n8n
         try {
-            const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://elesco-trondheim.vercel.app'
-            const webhookUrl = process.env.N8N_NOTIFICATION_WEBHOOK_URL || 'https://n8n.helkrypt.no/webhook/elesco-trondheim'
-
-            await fetch(webhookUrl, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    to: userEmail,
-                    from: '"Elesco Trondheim" <chatbot@cityrtv.no>',
-                    subject: 'Ditt passord har blitt tilbakestilt',
-                    html: `
-                        <div style="font-family: 'Segoe UI', Arial, sans-serif; color: #333; max-width: 600px; margin: 0 auto;">
-                            <div style="background: #0284c7; padding: 20px 24px; border-radius: 8px 8px 0 0;">
-                                <h1 style="color: white; margin: 0; font-size: 20px;">Passord tilbakestilt</h1>
-                            </div>
-                            <div style="background: #f9fafb; padding: 24px; border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 8px 8px;">
-                                <p>Hei ${userName || 'der'},</p>
-                                <p>En administrator har tilbakestilt passordet ditt for Elesco Trondheim Dashboard.</p>
-                                
-                                <div style="background: white; padding: 16px; border-radius: 8px; margin: 20px 0; border: 1px solid #e5e7eb;">
-                                    <p style="margin: 0 0 8px 0;"><strong>Dine nye innloggingsdetaljer:</strong></p>
-                                    <p style="margin: 4px 0;"><strong>E-post:</strong> ${userEmail}</p>
-                                    <p style="margin: 4px 0;"><strong>Midlertidig passord:</strong> ${newPassword}</p>
-                                </div>
-
-                                <p style="color: #dc2626; font-weight: 600;">⚠️ Viktig: Du vil bli bedt om å endre passordet ditt ved neste innlogging.</p>
-                                
-                                <a href="${appUrl}/login" style="background: #0284c7; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block; font-weight: 500; margin-top: 16px;">
-                                    Logg inn nå
-                                </a>
-                                
-                                <p style="margin-top: 24px; font-size: 14px; color: #6b7280;">
-                                    Hvis du ikke har bedt om denne endringen, ta kontakt med din administrator umiddelbart.
-                                </p>
-                            </div>
-                        </div>
-                    `
-                })
+            const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://app.helkrypt.no'
+            await sendPasswordResetEmail({
+                to: userEmail,
+                name: userName || userEmail,
+                resetUrl: `${appUrl}/login`,
+                expiresInMinutes: 0, // Admin-reset — no expiry
             })
         } catch (emailError) {
             console.error('Failed to send password reset email:', emailError)
