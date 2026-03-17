@@ -1,105 +1,41 @@
 import { NextResponse } from 'next/server';
+import Anthropic from '@anthropic-ai/sdk';
 import OpenAI from 'openai';
 import { createClient } from '@supabase/supabase-js';
 import { notifyClientWebhook } from '@/lib/webhook';
+import { sendEmail } from '@/lib/n8n';
+import { Ratelimit } from '@upstash/ratelimit';
+import { Redis } from '@upstash/redis';
 
-// Rate limiting (in-memory, per IP)
-const rateLimitMap = new Map()
+// Rate limiting via Upstash Redis (fungerer på Vercel serverless)
+const ratelimit = new Ratelimit({
+    redis: Redis.fromEnv(),
+    limiter: Ratelimit.slidingWindow(20, '60 s'),
+    analytics: false,
+})
 
-function isRateLimited(ip) {
-    const now = Date.now()
-    const windowMs = 60 * 1000 // 1 minutt
-    const maxRequests = 20
-
-    if (!rateLimitMap.has(ip)) {
-        rateLimitMap.set(ip, { count: 1, start: now })
+async function isRateLimited(ip) {
+    try {
+        const { success } = await ratelimit.limit(ip)
+        return !success
+    } catch {
+        // Fail open hvis Redis ikke er tilgjengelig
         return false
     }
-
-    const data = rateLimitMap.get(ip)
-    if (now - data.start > windowMs) {
-        rateLimitMap.set(ip, { count: 1, start: now })
-        return false
-    }
-
-    data.count++
-    return data.count > maxRequests
 }
 
 // Initialization
-const openai = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY,
+const anthropic = new Anthropic({
+    apiKey: process.env.ANTHROPIC_API_KEY,
 });
+
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL,
     process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-// Helper: Send Admin Notification
-async function sendAdminNotification(inquiry, webhookUrl) {
-    try {
-        console.log('Attempting to send admin notification for inquiry:', inquiry.id);
-
-        const n8nWebhookUrl = webhookUrl || process.env.N8N_NOTIFICATION_WEBHOOK_URL;
-        if (!n8nWebhookUrl) {
-            console.warn('Ingen webhook_url konfigurert for klient — admin-varsling deaktivert');
-            return;
-        }
-
-        try {
-            const n8nResponse = await fetch(n8nWebhookUrl, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    id: inquiry.id,
-                    customer_name: inquiry.customer_name,
-                    customer_email: inquiry.customer_email,
-                    customer_phone: inquiry.customer_phone,
-                    customer_address: inquiry.customer_address,
-                    subject: inquiry.subject,
-                    message: inquiry.message,
-                    app_url: process.env.NEXT_PUBLIC_APP_URL || 'https://elesco-trondheim.vercel.app',
-                    from: process.env.SMTP_FROM || 'Elesco System <chatbot@cityrtv.no>',
-                    to: process.env.ADMIN_EMAIL || 'marius@helkrypt.no',
-                    html: `
-                        <div style="font-family: 'Segoe UI', Arial, sans-serif; color: #333; max-width: 600px; margin: 0 auto;">
-                            <div style="background: #0284c7; padding: 20px 24px; border-radius: 8px 8px 0 0;">
-                                <h1 style="color: white; margin: 0; font-size: 20px;">Ny henvendelse fra chat</h1>
-                            </div>
-                            <div style="background: #f9fafb; padding: 24px; border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 8px 8px;">
-                                <table style="width: 100%; border-collapse: collapse; margin-bottom: 16px;">
-                                    <tr><td style="padding: 8px 0; color: #6b7280;">Kunde:</td><td style="padding: 8px 0;">${inquiry.customer_name} (<a href="mailto:${inquiry.customer_email}">${inquiry.customer_email || 'Ingen e-post'}</a>)</td></tr>
-                                    <tr><td style="padding: 8px 0; color: #6b7280;">Telefon:</td><td style="padding: 8px 0;">${inquiry.customer_phone || 'Ikke oppgitt'}</td></tr>
-                                    <tr><td style="padding: 8px 0; color: #6b7280;">Emne:</td><td style="padding: 8px 0; font-weight: 600;">${inquiry.subject}</td></tr>
-                                </table>
-                                <div style="border-top: 1px solid #e5e7eb; padding-top: 16px;">
-                                    <h3 style="margin-top: 0; color: #374151;">Beskrivelse:</h3>
-                                    <p style="white-space: pre-wrap; color: #4b5563;">${inquiry.message}</p>
-                                </div>
-                                <br>
-                                <a href="${process.env.NEXT_PUBLIC_APP_URL || 'https://elesco-trondheim.vercel.app'}/inquiries/${inquiry.id}" style="background: #0284c7; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block; font-weight: 500;">Gå til sak i dashboard</a>
-                            </div>
-                        </div>
-                    `
-                })
-            });
-
-            if (n8nResponse.ok) {
-                console.log('Admin notification sent via n8n webhook');
-                return;
-            } else {
-                throw new Error(`n8n webhook failed with status: ${n8nResponse.status}`);
-            }
-        } catch (n8nError) {
-            console.error('n8n webhook error:', n8nError);
-        }
-    } catch (error) {
-        console.error('Failed to send admin notification:', error);
-    }
-}
 
 // Helper: Extract customer info from user messages
 function extractCustomerInfoFromMessages(userMessages) {
@@ -139,7 +75,7 @@ function extractCustomerInfoFromMessages(userMessages) {
 export async function POST(request) {
     try {
         const ip = request.headers.get('x-forwarded-for') || 'unknown'
-        if (isRateLimited(ip)) {
+        if (await isRateLimited(ip)) {
             return NextResponse.json({ error: 'For mange forespørsler' }, { status: 429 })
         }
 
@@ -178,13 +114,37 @@ export async function POST(request) {
             return NextResponse.json({ error: 'System prompt not found for client' }, { status: 500 })
         }
 
-        const { message, conversationId, fileUrl } = await request.json();
+        const { message, conversationId: incomingConvId, fileUrl } = await request.json();
 
         if (!message && !fileUrl) {
             return NextResponse.json(
                 { error: 'Message or fileUrl is required' },
                 { status: 400 }
             );
+        }
+
+        // Lazy conversation creation — if no conversationId, create one now
+        let conversationId = incomingConvId;
+        if (!conversationId) {
+            const { data: newConv, error: convError } = await supabase
+                .from('conversations')
+                .insert({ visitor_name: 'Gjest', client_id: clientId, status: 'active' })
+                .select('id')
+                .single();
+            if (!convError && newConv) {
+                conversationId = newConv.id;
+            }
+        }
+
+        // Save user message atomically before AI call
+        if (conversationId && (message || fileUrl)) {
+            await supabase.from('messages').insert({
+                conversation_id: conversationId,
+                role: 'user',
+                content: message || '[Vedlegg]',
+                file_url: fileUrl || null,
+                client_id: clientId,
+            });
         }
 
         // Fetch History — load ALL messages for this conversation so the agent
@@ -218,11 +178,6 @@ export async function POST(request) {
             totalChars += len
         }
         history = trimmedHistory
-
-        // Prepare current message
-        const currentContent = [];
-        if (message) currentContent.push({ type: 'text', text: message });
-        if (fileUrl) currentContent.push({ type: 'image_url', image_url: { url: fileUrl } });
 
         // Fetch Opening Hours for the prompt (filtrert på klient)
         const { data: hoursData } = await supabase
@@ -262,46 +217,68 @@ export async function POST(request) {
             hoursText = "Se nettsiden for oppdaterte åpningstider.";
         }
 
-        const dynamicSystemPrompt = promptRow.content.replace('[[OPENING_HOURS]]', hoursText);
+        // RAG: hent relevante knowledge_chunks basert på brukerens melding
+        let ragContext = '';
+        if (message && process.env.OPENAI_API_KEY) {
+            try {
+                const embeddingRes = await openai.embeddings.create({
+                    model: 'text-embedding-3-small',
+                    input: message,
+                });
+                const queryEmbedding = embeddingRes.data[0].embedding;
+                const { data: chunks } = await supabase.rpc('match_chunks', {
+                    query_embedding: queryEmbedding,
+                    match_client_id: clientId,
+                    match_count: 5,
+                    match_threshold: 0.7,
+                });
+                if (chunks && chunks.length > 0) {
+                    ragContext = '\n\n### Relevant informasjon fra kunnskapsbase:\n' +
+                        chunks.map(c => c.content).join('\n\n');
+                }
+            } catch (ragErr) {
+                console.warn('RAG lookup feilet (ikke-kritisk):', ragErr.message);
+            }
+        }
 
-        // Construct Messages for OpenAI
+        const dynamicSystemPrompt = promptRow.content
+            .replace('[[OPENING_HOURS]]', hoursText)
+            + ragContext;
+
+        // Bygg meldingsarray for Anthropic (system-prompt er separat parameter)
         const apiMessages = [
-            { role: 'system', content: dynamicSystemPrompt },
             ...history,
             {
                 role: 'user',
-                content: fileUrl ? currentContent : (message || "")
+                content: fileUrl
+                    ? [
+                        ...(message ? [{ type: 'text', text: message }] : []),
+                        { type: 'image', source: { type: 'url', url: fileUrl } },
+                    ]
+                    : (message || "")
             }
         ];
 
-        // Call OpenAI
-        const completion = await openai.chat.completions.create({
-            model: 'gpt-5-mini-2025-08-07',
+        // Kall Claude Haiku
+        const claudeResponse = await anthropic.messages.create({
+            model: process.env.CLAUDE_CHAT_MODEL || 'claude-haiku-4-5-20251001',
+            system: dynamicSystemPrompt,
             messages: apiMessages,
-            max_completion_tokens: 10000,
+            max_tokens: 2048,
         });
 
-        const firstChoice = completion.choices[0];
-        let response = firstChoice?.message?.content;
-
-        console.log('OpenAI Choice details:', {
-            finish_reason: firstChoice?.finish_reason,
-            has_content: !!response,
-            has_tool_calls: !!firstChoice?.message?.tool_calls,
-            refusal: firstChoice?.message?.refusal
+        console.log('Claude response details:', {
+            stop_reason: claudeResponse.stop_reason,
+            has_content: claudeResponse.content?.length > 0,
+            model: claudeResponse.model,
         });
 
-        // If content is null but tool_calls exist, it's likely a hallucinated tool call
-        if (!response && firstChoice?.message?.tool_calls) {
-            response = "Jeg beklager, jeg prøvde å utføre en teknisk handling jeg ikke har tilgang til. Kan du prøve å beskrive hva du trenger hjelp med på nytt, eller gi meg din kontaktinfo slik at en saksbehandler kan ta kontakt?";
-        }
+        let response = claudeResponse.content?.[0]?.type === 'text'
+            ? claudeResponse.content[0].text
+            : null;
 
         if (!response) {
-            if (firstChoice?.message?.refusal) {
-                response = "Jeg beklager, men jeg har ikke lov til å svare på dette spørsmålet basert på mine instruksjoner.";
-            } else {
-                response = 'Beklager, jeg klarte ikke å generere et svar for øyeblikket. Vennligst prøv igjen litt senere.';
-            }
+            response = 'Beklager, jeg klarte ikke å generere et svar for øyeblikket. Vennligst prøv igjen litt senere.';
         }
 
         let escalationData = null;
@@ -380,7 +357,19 @@ export async function POST(request) {
                     console.error('Failed to create inquiry:', inquiryError);
                 } else if (inquiryData) {
                     console.log('Inquiry created successfully:', inquiryData.id);
-                    await sendAdminNotification(inquiryData, client.webhook_url);
+                    await sendEmail({
+                        to: process.env.ADMIN_EMAIL || 'marius@helkrypt.no',
+                        subject: `Ny henvendelse: ${inquiryData.subject}`,
+                        html: `<div style="font-family:sans-serif;max-width:600px">
+                            <h2>Ny henvendelse fra chat</h2>
+                            <p><strong>Kunde:</strong> ${inquiryData.customer_name} (${inquiryData.customer_email || 'ingen e-post'})</p>
+                            <p><strong>Telefon:</strong> ${inquiryData.customer_phone || 'ikke oppgitt'}</p>
+                            <p><strong>Emne:</strong> ${inquiryData.subject}</p>
+                            <p><strong>Beskrivelse:</strong><br>${inquiryData.message}</p>
+                            <a href="${process.env.NEXT_PUBLIC_APP_URL}/inquiries/${inquiryData.id}" style="background:#0284c7;color:white;padding:12px 24px;text-decoration:none;border-radius:6px;display:inline-block">Gå til sak</a>
+                        </div>`,
+                        clientId,
+                    }).catch(err => console.error('Admin notification error:', err));
                     await notifyClientWebhook(client, 'ticket.created', {
                         ticketId: inquiryData.id,
                         summary: inquiryData.subject,
@@ -435,6 +424,19 @@ export async function POST(request) {
             } catch (extractErr) {
                 console.error('Error extracting customer info:', extractErr);
             }
+        }
+
+        // Save AI response atomically
+        if (conversationId) {
+            await supabase.from('messages').insert({
+                conversation_id: conversationId,
+                role: 'assistant',
+                content: visibleResponse,
+                client_id: clientId,
+            });
+            await supabase.from('conversations')
+                .update({ updated_at: new Date().toISOString() })
+                .eq('id', conversationId);
         }
 
         return NextResponse.json({

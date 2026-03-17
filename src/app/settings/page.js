@@ -48,15 +48,18 @@ export default function SettingsPage() {
             setClientId(profile?.client_id || '')
         }
 
-        // Fetch Prompt
-        const { data: settingsData } = await supabase
-            .from('system_settings')
-            .select('value')
-            .eq('key', 'system_prompt')
-            .single()
+        // Fetch Prompt from system_prompts (multi-tenant)
+        if (profile?.client_id) {
+            const { data: promptData } = await supabase
+                .from('system_prompts')
+                .select('content')
+                .eq('client_id', profile.client_id)
+                .eq('active', true)
+                .single()
 
-        if (settingsData) {
-            setPrompt(settingsData.value)
+            if (promptData) {
+                setPrompt(promptData.content)
+            }
         }
 
         // Fetch Opening Hours

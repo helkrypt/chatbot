@@ -1,17 +1,41 @@
 import { NextResponse } from 'next/server';
-import OpenAI from 'openai';
+import Anthropic from '@anthropic-ai/sdk';
+import { createAdminClient } from '@/lib/supabase-admin';
+import { createClient } from '@/lib/supabase-server';
 
-const openai = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY,
+const anthropic = new Anthropic({
+    apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
 export async function POST(request) {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
     try {
-        const { text, conversationMessages, customerName, agentName, agentEmail, inquirySubject } = await request.json();
+        const { text, conversationMessages, customerName, agentName, agentEmail, inquirySubject, client_id } = await request.json();
 
         if (!text) {
             return NextResponse.json({ error: 'Text is required' }, { status: 400 });
         }
+
+        if (!client_id) {
+            return NextResponse.json({ error: 'client_id is required' }, { status: 400 });
+        }
+
+        // Fetch client info for dynamic signature
+        const admin = createAdminClient();
+        const { data: client } = await admin
+            .from('clients')
+            .select('name, escalation_email, config, domain')
+            .eq('id', client_id)
+            .single();
+
+        const clientName = client?.name || client_id;
+        const clientAddress = client?.config?.address || '';
+        const clientPhone = client?.config?.phone || '';
+        const clientWebsite = client?.config?.website || (client?.domain ? `www.${client.domain}` : '');
+        const clientFromEmail = client?.config?.fromEmail || client?.escalation_email || '';
 
         // Build conversation context if available
         let conversationContext = '';
@@ -24,7 +48,16 @@ export async function POST(request) {
             conversationContext += '---\n';
         }
 
-        const systemPrompt = `Du er en ekspert på kundeservice-kommunikasjon for Elesco Trondheim (City Radio & TV-Service AS).
+        const signature = [
+            `${agentName || '[Kundebehandler]'}`,
+            clientName,
+            clientAddress,
+            clientPhone ? `Tlf. ${clientPhone}` : '',
+            agentEmail || clientFromEmail || '',
+            clientWebsite,
+        ].filter(Boolean).join('\n');
+
+        const systemPrompt = `Du er en ekspert på kundeservice-kommunikasjon for ${clientName}.
 
 Din oppgave er å omskrive kundebehandlerens utkast til en profesjonell, varm og tydelig e-post til kunden.
 
@@ -37,38 +70,28 @@ Viktige regler:
 - Avslutt ALLTID med denne eksakte signaturen (ikke endre den):
 
 Med vennlig hilsen,
-${agentName || '[Kundebehandler]'}
-Elesco Trondheim
-City Radio & TV-Service AS
-Industriveien 5
-7072 Heimdal
-Tlf. 72 88 01 55
-${agentEmail || ''}
-www.elescotrondheim.no
+${signature}
 
 - Returner KUN e-postteksten, ingen ekstra kommentarer
 - Skriv på norsk`;
 
-        const completion = await openai.chat.completions.create({
-            model: "gpt-4o",
+        const claudeResponse = await anthropic.messages.create({
+            model: process.env.CLAUDE_CHAT_MODEL || 'claude-haiku-4-5-20251001',
+            system: systemPrompt,
             messages: [
                 {
-                    role: "system",
-                    content: systemPrompt
-                },
-                {
-                    role: "user",
-                    content: `${conversationContext}
-
-Emne for henvendelsen: ${inquirySubject || 'Kundehenvendelse'}
-
-Kundebehandlerens utkast som skal optimaliseres:
-${text}`
+                    role: 'user',
+                    content: `${conversationContext}\n\nEmne for henvendelsen: ${inquirySubject || 'Kundehenvendelse'}\n\nKundebehandlerens utkast som skal optimaliseres:\n${text}`
                 }
             ],
+            max_tokens: 1024,
         });
 
-        const optimizedText = completion.choices[0].message.content;
+        const optimizedText = claudeResponse.content?.[0]?.text;
+
+        if (!optimizedText) {
+            return NextResponse.json({ error: 'Failed to generate optimized text' }, { status: 500 });
+        }
 
         return NextResponse.json({ optimizedText });
 

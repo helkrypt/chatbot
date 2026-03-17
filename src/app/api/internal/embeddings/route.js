@@ -23,11 +23,17 @@ export async function POST(request) {
     process.env.SUPABASE_SERVICE_ROLE_KEY
   );
 
-  await supabase.from('knowledge_base').insert({
+  const { count: existingCount } = await supabase
+    .from('knowledge_chunks')
+    .select('*', { count: 'exact', head: true })
+    .eq('client_id', clientId);
+
+  await supabase.from('knowledge_chunks').insert({
     client_id: clientId,
     content,
-    source,
+    source_url: source || null,
     embedding: embedding.data[0].embedding,
+    chunk_index: existingCount || 0,
   });
 
   return NextResponse.json({ success: true });

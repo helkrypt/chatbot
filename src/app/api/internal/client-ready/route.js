@@ -25,7 +25,7 @@ export async function POST(request) {
     client_id: clientId,
     content: systemPrompt,
     version: 1,
-    is_active: true,
+    active: true,
   });
 
   return NextResponse.json({ success: true });
