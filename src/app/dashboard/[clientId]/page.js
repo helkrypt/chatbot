@@ -62,7 +62,7 @@ export default function ClientDashboardPage() {
     const cutoffStr = startDate.toISOString()
 
     const [clientRes, chartData, conversationsToday, totalConversations, escalatedConversations, newInquiries, openInquiries, resolvedToday, recent] = await Promise.all([
-      supabase.from('clients').select('*').eq('id', clientId).single(),
+      fetch(`/api/clients/${clientId}`).then(r => r.ok ? r.json() : null),
       supabase.from('conversations').select('created_at').eq('client_id', clientId).gte('created_at', cutoffStr),
       supabase.from('conversations').select('*', { count: 'exact', head: true }).eq('client_id', clientId).gte('created_at', todayStr),
       supabase.from('conversations').select('*', { count: 'exact', head: true }).eq('client_id', clientId).gte('created_at', cutoffStr),
@@ -73,7 +73,7 @@ export default function ClientDashboardPage() {
       supabase.from('conversations').select('*').eq('client_id', clientId).order('updated_at', { ascending: false }).limit(5),
     ])
 
-    setClient(clientRes.data)
+    setClient(clientRes?.client || null)
 
     // Build chart data
     const statsMap = {}

@@ -21,6 +21,8 @@ export default function AdminClientPage() {
   const [selectedModules, setSelectedModules] = useState([])
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
   const [retriggering, setRetriggering] = useState(false)
+  const [auditLogs, setAuditLogs] = useState([])
+  const [logsLoading, setLogsLoading] = useState(false)
 
   // Brreg state
   const [brregLoading, setBrregLoading] = useState(false)
@@ -41,10 +43,28 @@ export default function AdminClientPage() {
       .slice(0, 50)
   }
 
+  const loadAuditLogs = async () => {
+    setLogsLoading(true)
+    try {
+      const res = await fetch(`/api/admin/logs?client_id=${clientId}&limit=20`)
+      if (res.ok) {
+        const data = await res.json()
+        setAuditLogs(data.logs || [])
+      }
+    } catch (err) {
+      console.error('Feil ved henting av logger:', err)
+    }
+    setLogsLoading(false)
+  }
+
   useEffect(() => {
     checkAuth()
-    if (!isNew) loadClient()
-    else setLoading(false)
+    if (!isNew) {
+      loadClient()
+      loadAuditLogs()
+    } else {
+      setLoading(false)
+    }
   }, [clientId])
 
   const checkAuth = async () => {
@@ -470,6 +490,73 @@ export default function AdminClientPage() {
             </div>
           </form>
         </div>
+        {/* Aktivitetslogg */}
+        {!isNew && (
+          <div className="card" style={{ maxWidth: '700px', marginTop: '24px' }}>
+            <div style={{ padding: '24px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                <h3 style={{ fontSize: '12px', fontWeight: '700', color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', margin: 0 }}>Aktivitetslogg</h3>
+                <Link
+                  href={`/admin/logs?client=${clientId}`}
+                  style={{ fontSize: '13px', color: 'var(--color-accent)', textDecoration: 'none' }}
+                >
+                  Vis alle logger
+                </Link>
+              </div>
+              {logsLoading ? (
+                <div style={{ textAlign: 'center', padding: '20px', color: 'var(--color-text-muted)', fontSize: '13px' }}>Laster...</div>
+              ) : auditLogs.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '20px', color: 'var(--color-text-muted)', fontSize: '13px' }}>Ingen logger ennå</div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {auditLogs.map(log => (
+                    <div key={log.id} style={{
+                      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                      padding: '10px 14px', borderRadius: '8px', border: '1px solid var(--color-border)',
+                      fontSize: '13px',
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <span style={{
+                          fontSize: '11px', padding: '2px 8px', borderRadius: '12px',
+                          background: log.action.startsWith('prompt.') ? '#ede9fe' :
+                                     log.action.includes('delete') ? '#fef2f2' :
+                                     log.action.includes('create') ? '#d1fae5' : '#f3f4f6',
+                          color: log.action.startsWith('prompt.') ? '#6d28d9' :
+                                 log.action.includes('delete') ? '#dc2626' :
+                                 log.action.includes('create') ? '#065f46' : '#374151',
+                          whiteSpace: 'nowrap',
+                        }}>
+                          {{
+                            'client.create': 'Opprettet',
+                            'client.update': 'Oppdatert',
+                            'client.delete': 'Slettet',
+                            'client.retrigger_onboarding': 'Re-onboarding',
+                            'prompt.generate': 'Prompt generert',
+                            'prompt.approve': 'Prompt godkjent',
+                            'prompt.reject': 'Prompt avvist',
+                            'file.upload': 'Fil lastet opp',
+                          }[log.action] || log.action}
+                        </span>
+                        {log.details && (
+                          <span style={{ color: 'var(--color-text-muted)', fontSize: '12px' }}>
+                            {log.details.fields ? `Felt: ${log.details.fields.join(', ')}` :
+                             log.details.instruction ? log.details.instruction.slice(0, 60) + (log.details.instruction.length > 60 ? '...' : '') :
+                             log.details.name || ''}
+                          </span>
+                        )}
+                      </div>
+                      <span style={{ color: 'var(--color-text-muted)', fontSize: '12px', whiteSpace: 'nowrap' }}>
+                        {new Date(log.created_at).toLocaleString('no-NO', {
+                          day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
+                        })}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </main>
     </div>
   )

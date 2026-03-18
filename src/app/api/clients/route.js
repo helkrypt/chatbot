@@ -1,6 +1,7 @@
 import { createAdminClient } from '@/lib/supabase-admin'
 import { createClient } from '@/lib/supabase-server'
 import { triggerClientOnboarding, triggerWebsiteScraper, notifyAdmin } from '@/lib/n8n'
+import { logAudit } from '@/lib/audit'
 
 async function getSysadminUser() {
   const supabase = await createClient()
@@ -114,5 +115,6 @@ export async function POST(req) {
     }).catch(err => console.error('[WebsiteScraper] Feilet:', err.message));
   }
 
+  await logAudit({ clientId: data.id, userId: user.id, action: 'client.create', entityType: 'client', entityId: data.id, details: { name, plan } })
   return Response.json({ client: data }, { status: 201 })
 }

@@ -2,21 +2,27 @@ import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase-admin'
 import { createClient } from '@/lib/supabase-server'
 import { anthropic, MODELS } from '@/lib/anthropic'
+import { logAudit } from '@/lib/audit'
+
+async function getAuthUser() {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return null
+
+  const admin = createAdminClient()
+  const { data: profile } = await admin
+    .from('profiles').select('role, client_id').eq('id', user.id).single()
+
+  if (!['admin', 'sysadmin'].includes(profile?.role)) return null
+  return { ...user, role: profile.role, client_id: profile.client_id }
+}
 
 export async function POST(request) {
   try {
-    const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const user = await getAuthUser()
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const admin = createAdminClient()
-    const { data: profile } = await admin
-      .from('profiles').select('role, client_id').eq('id', user.id).single()
-
-    if (!['admin', 'sysadmin'].includes(profile?.role)) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
-
     const { clientId, instruction, autoApprove } = await request.json()
 
     if (!instruction?.trim()) {
@@ -95,7 +101,8 @@ ${instruction}`
     const newVersion = (currentPrompt?.version || 0) + 1
     const newStatus = autoApprove ? 'active' : 'pending_review'
 
-    if (currentPrompt) {
+    // Kun deaktiver eksisterende prompt ved autoApprove
+    if (autoApprove && currentPrompt) {
       await admin
         .from('system_prompts')
         .update({ is_active: false, status: 'archived' })
@@ -121,8 +128,18 @@ ${instruction}`
       return NextResponse.json({ error: insertError.message }, { status: 500 })
     }
 
+    await logAudit({
+      clientId,
+      userId: user.id,
+      action: 'prompt.generate',
+      entityType: 'system_prompt',
+      entityId: newPromptRow.id,
+      details: { instruction, version: newVersion, status: newStatus },
+    })
+
     return NextResponse.json({
       ok: true,
+      promptId: newPromptRow.id,
       newPrompt: newPromptContent,
       version: newVersion,
       status: newStatus,
@@ -130,6 +147,77 @@ ${instruction}`
 
   } catch (error) {
     console.error('update-prompt error:', error)
+    return NextResponse.json({ error: error.message }, { status: 500 })
+  }
+}
+
+export async function PATCH(request) {
+  try {
+    const user = await getAuthUser()
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+    const admin = createAdminClient()
+    const { promptId, action } = await request.json()
+
+    if (!promptId || !['approve', 'reject'].includes(action)) {
+      return NextResponse.json({ error: 'promptId og action (approve/reject) er påkrevd' }, { status: 400 })
+    }
+
+    // Hent prompt-forslaget
+    const { data: proposal } = await admin
+      .from('system_prompts')
+      .select('*')
+      .eq('id', promptId)
+      .single()
+
+    if (!proposal) {
+      return NextResponse.json({ error: 'Prompt ikke funnet' }, { status: 404 })
+    }
+
+    if (action === 'approve') {
+      // Deaktiver alle eksisterende aktive prompts for klienten
+      await admin
+        .from('system_prompts')
+        .update({ is_active: false, status: 'archived' })
+        .eq('client_id', proposal.client_id)
+        .eq('is_active', true)
+
+      // Aktiver den nye
+      await admin
+        .from('system_prompts')
+        .update({ is_active: true, status: 'active' })
+        .eq('id', promptId)
+
+      await logAudit({
+        clientId: proposal.client_id,
+        userId: user.id,
+        action: 'prompt.approve',
+        entityType: 'system_prompt',
+        entityId: promptId,
+        details: { version: proposal.version, change_reason: proposal.change_reason },
+      })
+    }
+
+    if (action === 'reject') {
+      await admin
+        .from('system_prompts')
+        .update({ status: 'rejected' })
+        .eq('id', promptId)
+
+      await logAudit({
+        clientId: proposal.client_id,
+        userId: user.id,
+        action: 'prompt.reject',
+        entityType: 'system_prompt',
+        entityId: promptId,
+        details: { version: proposal.version, change_reason: proposal.change_reason },
+      })
+    }
+
+    return NextResponse.json({ ok: true, action })
+
+  } catch (error) {
+    console.error('update-prompt PATCH error:', error)
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 }

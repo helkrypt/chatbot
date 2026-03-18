@@ -12,11 +12,16 @@ function SettingsPageInner() {
     const inspectedClientId = searchParams.get('client_id')
 
     const [prompt, setPrompt] = useState('')
-    const [instruction, setInstruction] = useState('')
     const [loading, setLoading] = useState(true)
-    const [updating, setUpdating] = useState(false)
     const [userRole, setUserRole] = useState(null)
     const [clientId, setClientId] = useState('')
+
+    // Prompt modal
+    const [showPromptModal, setShowPromptModal] = useState(false)
+    const [promptInstruction, setPromptInstruction] = useState('')
+    const [generatingPrompt, setGeneratingPrompt] = useState(false)
+    const [promptProposal, setPromptProposal] = useState(null) // { id, content }
+    const [approvingPrompt, setApprovingPrompt] = useState(false)
 
     const [openingHours, setOpeningHours] = useState([])
     const [newHour, setNewHour] = useState({ category: 'regular', label: '', hours: '', specific_date: '' })
@@ -108,32 +113,52 @@ function SettingsPageInner() {
         setLoading(false)
     }
 
-    const handleRequestPromptChange = async () => {
-        if (!instruction.trim()) return
-
-        setUpdating(true)
+    const handleGeneratePrompt = async () => {
+        if (!promptInstruction.trim()) return
+        setGeneratingPrompt(true)
         try {
-            const response = await fetch('/api/update-prompt', {
+            const res = await fetch('/api/update-prompt', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    clientId,
-                    instruction: instruction.trim(),
-                    autoApprove: false,
-                }),
+                body: JSON.stringify({ clientId, instruction: promptInstruction.trim(), autoApprove: false }),
             })
-
-            const data = await response.json()
-            if (response.ok) {
-                setInstruction('')
-                alert(`Forespørselen er sendt til gjennomgang. Ny prompt-versjon ${data.version} venter på godkjenning.`)
+            const data = await res.json()
+            if (res.ok) {
+                setPromptProposal({ id: data.promptId, content: data.newPrompt })
             } else {
                 alert('Feil: ' + data.error)
             }
         } catch (err) {
             alert('Nettverksfeil: ' + err.message)
         } finally {
-            setUpdating(false)
+            setGeneratingPrompt(false)
+        }
+    }
+
+    const handlePromptAction = async (action) => {
+        if (!promptProposal?.id) return
+        setApprovingPrompt(true)
+        try {
+            const res = await fetch('/api/update-prompt', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ promptId: promptProposal.id, action }),
+            })
+            if (res.ok) {
+                if (action === 'approve') {
+                    setPrompt(promptProposal.content)
+                }
+                setPromptProposal(null)
+                setPromptInstruction('')
+                setShowPromptModal(false)
+            } else {
+                const data = await res.json()
+                alert('Feil: ' + data.error)
+            }
+        } catch (err) {
+            alert('Nettverksfeil: ' + err.message)
+        } finally {
+            setApprovingPrompt(false)
         }
     }
 
@@ -381,36 +406,102 @@ function SettingsPageInner() {
                         </div>
                     </div>
 
-                    {/* Request Prompt Change Card */}
+                    {/* AI Instructions Card */}
                     <div className="card">
-                        <div className="card-header">
-                            <h2 className="card-title">Be om endring av AI-Instruksjoner</h2>
+                        <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <h2 className="card-title">AI-Instruksjoner</h2>
+                            <button className="btn btn-primary" style={{ fontSize: '13px' }} onClick={() => setShowPromptModal(true)}>
+                                Be om endring
+                            </button>
                         </div>
                         <div style={{ padding: '24px' }}>
-                            <p style={{ marginBottom: '16px', color: 'var(--color-text-muted)', fontSize: '14px' }}>
-                                Beskriv hva du ønsker å endre i chatboten sin oppførsel. En forespørsel vil bli sendt til teknisk ansvarlig (marius@helkrypt.no) som vil oppdatere instruksjonene manuelt.
+                            <p style={{ marginBottom: '12px', color: 'var(--color-text-muted)', fontSize: '14px' }}>
+                                Dette er instruksjonene chatboten bruker for å svare kundene dine.
                             </p>
-
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                                <textarea
-                                    className="input-field"
-                                    style={{ width: '100%', minHeight: '100px', padding: '12px', fontSize: '14px' }}
-                                    placeholder='F.eks: "Når en kunde spør om kaffemaskiner, svar at de må leveres til verkstedet."'
-                                    value={instruction}
-                                    onChange={(e) => setInstruction(e.target.value)}
-                                />
-                                <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                                    <button
-                                        onClick={handleRequestPromptChange}
-                                        className="btn btn-primary"
-                                        disabled={updating || !instruction.trim()}
-                                    >
-                                        {updating ? 'Sender forespørsel...' : 'Send forespørsel'}
-                                    </button>
-                                </div>
-                            </div>
+                            {prompt ? (
+                                <pre style={{
+                                    background: 'var(--color-bg-subtle)', border: '1px solid var(--color-border)',
+                                    borderRadius: '8px', padding: '16px', fontSize: '13px', lineHeight: '1.6',
+                                    maxHeight: '300px', overflowY: 'auto', whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+                                    color: 'var(--color-text)', fontFamily: 'inherit',
+                                }}>{prompt}</pre>
+                            ) : (
+                                <p style={{ color: 'var(--color-text-muted)', fontStyle: 'italic' }}>Ingen systemprompt konfigurert enn&aring;.</p>
+                            )}
                         </div>
                     </div>
+
+                    {/* Prompt Change Modal */}
+                    {showPromptModal && (
+                        <div style={{
+                            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+                            background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)',
+                            display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 2000,
+                        }} onClick={() => { if (!generatingPrompt && !approvingPrompt) { setShowPromptModal(false); setPromptProposal(null); setPromptInstruction('') } }}>
+                            <div style={{
+                                background: 'var(--color-card)', borderRadius: '16px', padding: '32px',
+                                maxWidth: '900px', width: '90%', maxHeight: '85vh', overflowY: 'auto',
+                                boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)',
+                            }} onClick={e => e.stopPropagation()}>
+                                <h2 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '16px' }}>Be om endring av AI-instruksjoner</h2>
+
+                                {!promptProposal ? (
+                                    <>
+                                        <p style={{ fontSize: '14px', color: 'var(--color-text-muted)', marginBottom: '12px' }}>
+                                            Beskriv hva du &oslash;nsker &aring; endre. AI-en genererer et forslag basert p&aring; eksisterende instruksjoner.
+                                        </p>
+                                        <textarea
+                                            className="input-field"
+                                            style={{ width: '100%', minHeight: '100px', padding: '12px', fontSize: '14px', marginBottom: '16px' }}
+                                            placeholder='F.eks: "N&aring;r en kunde sp&oslash;r om kaffemaskiner, svar at de m&aring; leveres til verkstedet."'
+                                            value={promptInstruction}
+                                            onChange={e => setPromptInstruction(e.target.value)}
+                                            disabled={generatingPrompt}
+                                        />
+                                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+                                            <button className="btn btn-secondary" onClick={() => { setShowPromptModal(false); setPromptInstruction('') }} disabled={generatingPrompt}>Avbryt</button>
+                                            <button className="btn btn-primary" onClick={handleGeneratePrompt} disabled={generatingPrompt || !promptInstruction.trim()}>
+                                                {generatingPrompt ? 'Genererer forslag...' : 'Generer forslag'}
+                                            </button>
+                                        </div>
+                                    </>
+                                ) : (
+                                    <>
+                                        <p style={{ fontSize: '14px', color: 'var(--color-text-muted)', marginBottom: '16px' }}>
+                                            Sammenlign n&aring;v&aelig;rende instruksjoner med foreslått endring. Godkjenn for &aring; aktivere.
+                                        </p>
+                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '20px' }}>
+                                            <div>
+                                                <div style={{ fontSize: '12px', fontWeight: '600', color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '8px' }}>N&aring;v&aelig;rende</div>
+                                                <pre style={{
+                                                    background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px',
+                                                    padding: '14px', fontSize: '12px', lineHeight: '1.6',
+                                                    maxHeight: '400px', overflowY: 'auto', whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+                                                    fontFamily: 'inherit',
+                                                }}>{prompt || '(Ingen eksisterende prompt)'}</pre>
+                                            </div>
+                                            <div>
+                                                <div style={{ fontSize: '12px', fontWeight: '600', color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '8px' }}>Foreslått</div>
+                                                <pre style={{
+                                                    background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '8px',
+                                                    padding: '14px', fontSize: '12px', lineHeight: '1.6',
+                                                    maxHeight: '400px', overflowY: 'auto', whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+                                                    fontFamily: 'inherit',
+                                                }}>{promptProposal.content}</pre>
+                                            </div>
+                                        </div>
+                                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+                                            <button className="btn btn-secondary" onClick={() => { setShowPromptModal(false); setPromptProposal(null); setPromptInstruction('') }} disabled={approvingPrompt}>Avbryt</button>
+                                            <button className="btn btn-secondary" style={{ color: '#dc2626', borderColor: '#fecaca' }} onClick={() => handlePromptAction('reject')} disabled={approvingPrompt}>Avvis</button>
+                                            <button className="btn btn-primary" onClick={() => handlePromptAction('approve')} disabled={approvingPrompt}>
+                                                {approvingPrompt ? 'Aktiverer...' : 'Godkjenn og aktiver'}
+                                            </button>
+                                        </div>
+                                    </>
+                                )}
+                            </div>
+                        </div>
+                    )}
 
                     {/* Widget Customization Card */}
                     <div className="card">

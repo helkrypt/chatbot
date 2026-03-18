@@ -1,6 +1,7 @@
 import { createAdminClient } from '@/lib/supabase-admin'
 import { createClient } from '@/lib/supabase-server'
 import { triggerClientOnboarding } from '@/lib/n8n'
+import { logAudit } from '@/lib/audit'
 
 async function getAuthorizedUser(clientId) {
   const supabase = await createClient()
@@ -58,6 +59,7 @@ export async function PATCH(req, { params }) {
       adminEmail: client.config?.contact_email || client.escalation_email || '',
       adminName: client.config?.contact_name || '',
     })
+    await logAudit({ clientId, userId: user.id, action: 'client.retrigger_onboarding', entityType: 'client', entityId: clientId })
     return Response.json({ ok: true })
   }
 
@@ -84,6 +86,7 @@ export async function PATCH(req, { params }) {
     .single()
 
   if (error) return Response.json({ error: error.message }, { status: 500 })
+  await logAudit({ clientId, userId: user.id, action: 'client.update', entityType: 'client', entityId: clientId, details: { fields: Object.keys(updates) } })
   return Response.json({ client: data })
 }
 
@@ -105,5 +108,6 @@ export async function DELETE(req, { params }) {
     deleted_at: new Date().toISOString(),
   }).eq('id', clientId)
   if (error) return Response.json({ error: error.message }, { status: 500 })
+  await logAudit({ clientId, userId: user.id, action: 'client.delete', entityType: 'client', entityId: clientId })
   return Response.json({ ok: true })
 }
