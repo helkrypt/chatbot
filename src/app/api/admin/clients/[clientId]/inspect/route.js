@@ -1,5 +1,5 @@
 import { createClient } from '@/lib/supabase-server';
-import { notifyAdmin } from '@/lib/n8n';
+import { notifySysadmin } from '@/lib/n8n';
 import { NextResponse } from 'next/server';
 
 export async function POST(request, { params }) {
@@ -20,7 +20,7 @@ export async function POST(request, { params }) {
   const { clientId } = params;
   const { clientName } = await request.json();
 
-  notifyAdmin({
+  notifySysadmin({
     type: 'client_inspection',
     title: 'Klient inspisert av superadmin',
     details: `${user.email} inspiserte klient ${clientName}`,

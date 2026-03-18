@@ -72,10 +72,10 @@ export async function sendWelcomeEmail({ to, name, role, clientId, clientName })
 }
 
 /**
- * Send intern admin-notifikasjon til Marius
+ * Send intern sysadmin-notifikasjon til Marius
  * Workflow: helkrypt-admin-notification (2uyAhk7AHE8RphsY)
  */
-export async function notifyAdmin({ type, title, details, clientId, clientName, severity = 'info' }) {
+export async function notifySysadmin({ type, title, details, clientId, clientName, severity = 'info' }) {
   return callN8nWebhook('admin-notification', {
     type, title, details, clientId, clientName, severity,
   });

@@ -1,6 +1,6 @@
 import { constructWebhookEvent, mapStripePlanToHelkrypt, generateClientSlug } from '@/lib/stripe'
 import { createAdminClient } from '@/lib/supabase-admin'
-import { triggerClientOnboarding, notifyAdmin, sendEmail } from '@/lib/n8n'
+import { triggerClientOnboarding, notifySysadmin, sendEmail } from '@/lib/n8n'
 
 export async function POST(req) {
   const rawBody = await req.text()
@@ -49,7 +49,7 @@ export async function POST(req) {
     }
   } catch (err) {
     console.error(`[Stripe] Feil ved håndtering av ${event.type}:`, err.message)
-    await notifyAdmin({
+    await notifySysadmin({
       type: 'stripe_error',
       title: `Stripe webhook feilet: ${event.type}`,
       details: err.message,
@@ -159,7 +159,7 @@ async function handleCheckoutCompleted(session, admin) {
   } catch (onboardErr) {
     console.error(`[Stripe] Onboarding feilet for ${clientId}:`, onboardErr.message)
     await admin.from('clients').update({ status: 'onboarding_failed' }).eq('id', clientId)
-    await notifyAdmin({
+    await notifySysadmin({
       type: 'onboarding_failed',
       title: `Onboarding feilet: ${companyName}`,
       details: `Klient ${clientId} ble opprettet, men onboarding-workflow feilet: ${onboardErr.message}. Re-trigger fra admin-panelet.`,
@@ -223,7 +223,7 @@ async function handleSubscriptionDeleted(sub, admin) {
     status: 'inactive',
   }).eq('id', client.id)
 
-  await notifyAdmin({
+  await notifySysadmin({
     type: 'subscription_cancelled',
     title: `Abonnement kansellert: ${client.name}`,
     details: `Stripe subscription ${sub.id} er slettet. Klient ${client.id} er deaktivert.`,

@@ -3,6 +3,7 @@ import { createAdminClient } from '@/lib/supabase-admin'
 import { createClient } from '@/lib/supabase-server'
 import { anthropic, MODELS } from '@/lib/anthropic'
 import { logAudit } from '@/lib/audit'
+import { notifySysadmin } from '@/lib/n8n'
 
 async function getAuthUser() {
   const supabase = await createClient()
@@ -147,6 +148,12 @@ ${instruction}`
 
   } catch (error) {
     console.error('update-prompt error:', error)
+    notifySysadmin({
+      type: 'prompt_generation_error',
+      title: 'Prompt-generering feilet',
+      details: error.message,
+      severity: 'error',
+    }).catch(() => {});
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 }
@@ -218,6 +225,12 @@ export async function PATCH(request) {
 
   } catch (error) {
     console.error('update-prompt PATCH error:', error)
+    notifySysadmin({
+      type: 'prompt_action_error',
+      title: 'Prompt godkjenning/avvisning feilet',
+      details: error.message,
+      severity: 'error',
+    }).catch(() => {});
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 }

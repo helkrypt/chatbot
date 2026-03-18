@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { sendEmail } from '@/lib/n8n';
+import { sendEmail, notifySysadmin } from '@/lib/n8n';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -153,6 +153,12 @@ export async function GET(request) {
 
   } catch (error) {
     console.error('Weekly report error:', error);
+    notifySysadmin({
+      type: 'report_error',
+      title: 'Ukentlig rapport feilet',
+      details: error.message,
+      severity: 'error',
+    }).catch(() => {});
     return NextResponse.json({ error: 'Failed to generate weekly report', details: error.message }, { status: 500 });
   }
 }

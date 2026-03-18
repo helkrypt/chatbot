@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { anthropic, MODELS } from '@/lib/anthropic';
+import { notifySysadmin } from '@/lib/n8n';
 
 const WEBHOOK_SECRET = process.env.ONBOARDING_WEBHOOK_SECRET;
 
@@ -9,14 +10,19 @@ export async function POST(request) {
     return NextResponse.json({ error: 'Ikke autorisert' }, { status: 403 });
   }
 
-  const { clientId, companyName, websiteContent, brreg } = await request.json();
+  let clientId, companyName;
+  try {
+    const body = await request.json();
+    clientId = body.clientId;
+    companyName = body.companyName;
+    const { websiteContent, brreg } = body;
 
-  const message = await anthropic.messages.create({
-    model: MODELS.promptGen,
-    max_tokens: 2000,
-    messages: [{
-      role: 'user',
-      content: `Generer en profesjonell system-prompt for en AI kundeservice-chatbot for ${companyName}.
+    const message = await anthropic.messages.create({
+      model: MODELS.promptGen,
+      max_tokens: 2000,
+      messages: [{
+        role: 'user',
+        content: `Generer en profesjonell system-prompt for en AI kundeservice-chatbot for ${companyName}.
 
 Firmainformasjon fra Brønnøysund:
 ${JSON.stringify(brreg, null, 2)}
@@ -30,11 +36,23 @@ Systempromptet skal:
 - Fokusere på kundeservice
 - Inkludere firmaets kjernevirksomhet
 - Ha en profesjonell og hjelpsom tone`,
-    }],
-  });
+      }],
+    });
 
-  return NextResponse.json({
-    success: true,
-    systemPrompt: message.content[0].text,
-  });
+    return NextResponse.json({
+      success: true,
+      systemPrompt: message.content[0].text,
+    });
+  } catch (error) {
+    console.error('Generate-prompt API error:', error);
+    notifySysadmin({
+      type: 'internal_api_error',
+      title: 'Prompt-generering feilet (onboarding)',
+      details: error.message,
+      clientId: clientId || 'ukjent',
+      clientName: companyName,
+      severity: 'error',
+    }).catch(() => {});
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
 }

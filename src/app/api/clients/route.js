@@ -1,6 +1,6 @@
 import { createAdminClient } from '@/lib/supabase-admin'
 import { createClient } from '@/lib/supabase-server'
-import { triggerClientOnboarding, triggerWebsiteScraper, notifyAdmin } from '@/lib/n8n'
+import { triggerClientOnboarding, triggerWebsiteScraper, notifySysadmin } from '@/lib/n8n'
 import { logAudit } from '@/lib/audit'
 
 async function getSysadminUser() {
@@ -97,7 +97,7 @@ export async function POST(req) {
     });
   } catch (err) {
     console.error('[Onboarding] n8n trigger feilet:', err);
-    await notifyAdmin({
+    await notifySysadmin({
       type: 'onboarding_error',
       title: 'Onboarding workflow feilet',
       details: err.message,

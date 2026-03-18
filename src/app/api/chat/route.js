@@ -3,7 +3,7 @@ import { anthropic, MODELS } from '@/lib/anthropic';
 import { embed } from '@/lib/voyage';
 import { createClient } from '@supabase/supabase-js';
 import { notifyClientWebhook } from '@/lib/webhook';
-import { sendEmail } from '@/lib/n8n';
+import { sendEmail, notifySysadmin } from '@/lib/n8n';
 import { Ratelimit } from '@upstash/ratelimit';
 import { Redis } from '@upstash/redis';
 
@@ -66,15 +66,15 @@ function extractCustomerInfoFromMessages(userMessages) {
 }
 
 export async function POST(request) {
+    // Parse clientId utenfor try slik at den er tilgjengelig i catch for feilrapportering
+    const { searchParams } = new URL(request.url)
+    const clientId = request.headers.get('x-client-id') || searchParams.get('client')
+
     try {
         const ip = request.headers.get('x-forwarded-for') || 'unknown'
         if (await isRateLimited(ip)) {
             return NextResponse.json({ error: 'For mange forespørsler' }, { status: 429 })
         }
-
-        // ── Multi-tenant: les client_id fra header eller query param ──
-        const { searchParams } = new URL(request.url)
-        const clientId = request.headers.get('x-client-id') || searchParams.get('client')
 
         if (!clientId) {
             return NextResponse.json({ error: 'Missing client' }, { status: 400 })
@@ -403,7 +403,7 @@ export async function POST(request) {
                         summary: inquiryData.subject,
                         customerEmail: inquiryData.customer_email,
                         conversationId,
-                    });
+                    }).catch(err => console.error('Webhook notification feilet:', err));
                 }
             }
         }
@@ -474,6 +474,13 @@ export async function POST(request) {
 
     } catch (error) {
         console.error('Chat API Error:', error);
+        notifySysadmin({
+            type: 'chatbot_error',
+            title: 'Chatbot API feilet',
+            details: `${error.name || 'Error'}: ${error.message}`,
+            clientId: clientId || 'ukjent',
+            severity: 'error',
+        }).catch(() => {});
         return NextResponse.json(
             { error: 'Internal Server Error', details: error.message },
             { status: 500 }

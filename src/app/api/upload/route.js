@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { notifySysadmin } from '@/lib/n8n';
 
 const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -61,6 +62,12 @@ export async function POST(request) {
 
     } catch (error) {
         console.error('Upload API error:', error);
+        notifySysadmin({
+            type: 'upload_error',
+            title: 'Filopplasting feilet',
+            details: error.message,
+            severity: 'error',
+        }).catch(() => {});
         return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
     }
 }

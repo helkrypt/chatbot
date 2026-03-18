@@ -1,4 +1,5 @@
 import { createAdminClient } from '@/lib/supabase-admin'
+import { notifySysadmin } from '@/lib/n8n'
 
 export async function POST(req) {
   const secret = req.headers.get('x-webhook-secret')
@@ -38,19 +39,38 @@ export async function POST(req) {
   })
 
   if (clientError) {
+    notifySysadmin({
+      type: 'onboarding_error',
+      title: 'Onboarding webhook: klient-upsert feilet',
+      details: clientError.message,
+      clientId,
+      clientName: name,
+      severity: 'error',
+    }).catch(() => {});
     return Response.json({ error: clientError.message }, { status: 500 })
   }
 
-  await admin.from('system_prompts').insert({
+  const { error: promptError } = await admin.from('system_prompts').insert({
     client_id: clientId,
     content: systemPrompt,
     active: true,
   })
 
+  if (promptError) {
+    notifySysadmin({
+      type: 'onboarding_error',
+      title: 'Onboarding webhook: systemprompt-insert feilet',
+      details: promptError.message,
+      clientId,
+      clientName: name,
+      severity: 'error',
+    }).catch(() => {});
+  }
+
   await admin.from('onboarding_log').insert({
     client_id: clientId,
     step: 'webhook_complete',
-    status: 'success',
+    status: promptError ? 'partial' : 'success',
   })
 
   return Response.json({ ok: true, clientId })
