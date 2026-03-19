@@ -45,10 +45,24 @@ export async function POST(request) {
             `${msg.role === 'user' ? 'KUNDE' : 'AI-ASSISTENT'}: ${msg.content}`
         ).join('\n\n')
 
-        // Ask Claude to suggest prompt changes
+        // Ask Claude to suggest prompt changes using tool_use for reliable JSON
         const message = await anthropic.messages.create({
             model: MODELS.promptGen,
-            max_tokens: 4000,
+            max_tokens: 8000,
+            tools: [{
+                name: 'suggest_prompt_changes',
+                description: 'Foreslå endringer i systemprompten basert på operatørens tilbakemelding',
+                input_schema: {
+                    type: 'object',
+                    properties: {
+                        summary: { type: 'string', description: 'Kort oppsummering av hva som ble endret (1-3 setninger, på norsk)' },
+                        changes: { type: 'array', items: { type: 'string' }, description: 'Liste over spesifikke endringer som ble gjort' },
+                        updatedPrompt: { type: 'string', description: 'Den fullstendige oppdaterte systemprompten' }
+                    },
+                    required: ['summary', 'changes', 'updatedPrompt']
+                }
+            }],
+            tool_choice: { type: 'tool', name: 'suggest_prompt_changes' },
             messages: [{
                 role: 'user',
                 content: `Du er en ekspert på å forbedre AI-systemprompts for kundeservice-chatboter.
@@ -75,27 +89,16 @@ VIKTIG:
 - Hold samme format, språk og tone som originalen
 - Vær presis og konkret i endringene
 
-Svar i følgende JSON-format (og BARE JSON, ingen annen tekst):
-{
-  "summary": "Kort oppsummering av hva som ble endret (1-3 setninger, på norsk)",
-  "changes": ["Endring 1", "Endring 2"],
-  "updatedPrompt": "Den fullstendige oppdaterte systemprompten her"
-}`
+Bruk suggest_prompt_changes-verktøyet til å returnere resultatet.`
             }]
         })
 
-        const responseText = message.content[0].text
-
-        // Parse JSON from Claude's response
-        let parsed
-        try {
-            // Try to extract JSON if wrapped in code blocks
-            const jsonMatch = responseText.match(/```(?:json)?\s*([\s\S]*?)```/) || [null, responseText]
-            parsed = JSON.parse(jsonMatch[1].trim())
-        } catch (e) {
-            console.error('Failed to parse Claude response:', responseText)
-            return Response.json({ error: 'Kunne ikke tolke AI-forslaget' }, { status: 500 })
+        const toolUse = message.content.find(b => b.type === 'tool_use')
+        if (!toolUse) {
+            console.error('No tool_use in Claude response:', JSON.stringify(message.content))
+            return Response.json({ error: 'AI-en returnerte ikke et gyldig forslag' }, { status: 500 })
         }
+        const parsed = toolUse.input
 
         return Response.json({
             success: true,
