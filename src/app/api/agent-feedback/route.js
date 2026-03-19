@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase-server'
 import { anthropic, MODELS } from '@/lib/anthropic'
+import { incrementPromptUsage } from '@/lib/promptQuota'
 
 export async function POST(request) {
     const supabase = await createClient()
@@ -165,6 +166,13 @@ export async function PUT(request) {
         if (error) {
             console.error('Failed to save prompt:', error)
             return Response.json({ error: 'Kunne ikke lagre ny prompt' }, { status: 500 })
+        }
+
+        // Registrer bruk for kvotesporing (best-effort)
+        try {
+            await incrementPromptUsage(clientId)
+        } catch (quotaErr) {
+            console.error('Quota tracking failed (non-fatal):', quotaErr)
         }
 
         return Response.json({ success: true, newPromptId: newPrompt.id, newVersion: newPrompt.version })

@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase'
 import Sidebar from '@/components/Sidebar'
 import Navbar from '@/components/Navbar'
 import InspectBanner from '@/components/InspectBanner'
+import PromptQuotaWidget from '@/components/PromptQuotaWidget'
 
 export default function ClientDashboardPage() {
   const { clientId } = useParams()
@@ -297,6 +298,11 @@ export default function ClientDashboardPage() {
             </div>
           )}
         </div>
+        {/* Kvote for prompt-endringer */}
+        {(userRole === 'admin' || userRole === 'sysadmin') && (
+          <PromptQuotaWidget clientId={clientId} />
+        )}
+
         {/* Install snippet — visible to admin role only */}
         {userRole === 'admin' && (
           <div className="install-snippet-card">
