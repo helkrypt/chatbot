@@ -1,17 +1,24 @@
 'use client'
 
-import { useEffect, useState, useRef } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useEffect, useState, useRef, Suspense } from 'react'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase'
 import Sidebar from '@/components/Sidebar'
 import Navbar from '@/components/Navbar'
+import InspectBanner from '@/components/InspectBanner'
 import Link from 'next/link'
 
-export default function InquiryDetailPage() {
+function InquiryDetailInner() {
     const { id } = useParams()
     const router = useRouter()
+    const searchParams = useSearchParams()
     const supabase = createClient()
     const messagesEndRef = useRef(null)
+
+    const isInspecting = searchParams.get('inspect') === 'true'
+    const inspectedClientId = searchParams.get('client_id')
+    const inspectSuffix = isInspecting && inspectedClientId
+        ? `?inspect=true&client_id=${inspectedClientId}` : ''
 
     // Auth & Role State
     const [userRole, setUserRole] = useState(null)
@@ -38,6 +45,8 @@ export default function InquiryDetailPage() {
     const [showFeedbackModal, setShowFeedbackModal] = useState(false)
     const [feedbackText, setFeedbackText] = useState('')
     const [sendingFeedback, setSendingFeedback] = useState(false)
+    const [promptProposal, setPromptProposal] = useState(null)
+    const [applyingPrompt, setApplyingPrompt] = useState(false)
 
     // Email preview modal state
     const [showEmailModal, setShowEmailModal] = useState(false)
@@ -327,36 +336,44 @@ export default function InquiryDetailPage() {
 
     if (loading) {
         return (
-            <div className="app-container">
-                <Sidebar isOpen={isSidebarOpen} onClose={() => setIsSidebarOpen(false)} />
-                <main className="main-content">
-                    <Navbar onMenuClick={() => setIsSidebarOpen(true)} />
-                    <div className="loading"><div className="spinner"></div></div>
-                </main>
-            </div>
+            <>
+                {isInspecting && <InspectBanner clientId={inspectedClientId} />}
+                <div className="app-container">
+                    <Sidebar isOpen={isSidebarOpen} onClose={() => setIsSidebarOpen(false)} />
+                    <main className="main-content">
+                        <Navbar onMenuClick={() => setIsSidebarOpen(true)} />
+                        <div className="loading"><div className="spinner"></div></div>
+                    </main>
+                </div>
+            </>
         )
     }
 
     if (!inquiry) {
         return (
-            <div className="app-container">
-                <Sidebar isOpen={isSidebarOpen} onClose={() => setIsSidebarOpen(false)} />
-                <main className="main-content">
-                    <Navbar onMenuClick={() => setIsSidebarOpen(true)} />
-                    <div className="empty-state">
-                        <div className="empty-state-title">Henvendelse ikke funnet</div>
-                        <Link href="/inquiries" className="btn btn-primary">
-                            Tilbake til henvendelser
-                        </Link>
-                    </div>
-                </main>
-            </div>
+            <>
+                {isInspecting && <InspectBanner clientId={inspectedClientId} />}
+                <div className="app-container">
+                    <Sidebar isOpen={isSidebarOpen} onClose={() => setIsSidebarOpen(false)} />
+                    <main className="main-content">
+                        <Navbar onMenuClick={() => setIsSidebarOpen(true)} />
+                        <div className="empty-state">
+                            <div className="empty-state-title">Henvendelse ikke funnet</div>
+                            <Link href={`/inquiries${inspectSuffix}`} className="btn btn-primary">
+                                Tilbake til henvendelser
+                            </Link>
+                        </div>
+                    </main>
+                </div>
+            </>
         )
     }
 
     const canAssign = userRole === 'admin' || userRole === 'sysadmin' || !inquiry.assigned_to
 
     return (
+        <>
+        {isInspecting && <InspectBanner clientId={inspectedClientId} />}
         <div className="app-container">
             <Sidebar isOpen={isSidebarOpen} onClose={() => setIsSidebarOpen(false)} />
 
@@ -657,13 +674,13 @@ export default function InquiryDetailPage() {
                     </div>
                 )}
 
-                {/* Feedback Modal */}
-                {showFeedbackModal && (
+                {/* Feedback Modal — Step 1: Input */}
+                {showFeedbackModal && !promptProposal && (
                     <div style={{
                         position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
                         background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)',
                         display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 2000
-                    }} onClick={() => setShowFeedbackModal(false)}>
+                    }} onClick={() => { setShowFeedbackModal(false); setFeedbackText('') }}>
                         <div style={{
                             background: 'white', borderRadius: '16px', padding: '32px',
                             maxWidth: '550px', width: '90%',
@@ -674,10 +691,10 @@ export default function InquiryDetailPage() {
                                 <h2 style={{ fontSize: '20px', fontWeight: '700', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
                                     <span>✏️</span> Endre svar på agenten
                                 </h2>
-                                <button onClick={() => setShowFeedbackModal(false)} style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer', color: '#6b7280' }}>✕</button>
+                                <button onClick={() => { setShowFeedbackModal(false); setFeedbackText('') }} style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer', color: '#6b7280' }}>✕</button>
                             </div>
                             <p style={{ color: '#6b7280', fontSize: '14px', marginBottom: '16px', lineHeight: '1.5' }}>
-                                Beskriv hva agenten burde ha svart. Sendes til <strong>marius@helkrypt.no</strong> for justering av systemprompten.
+                                Beskriv hva agenten burde ha svart. AI-en vil automatisk foreslå endringer i systemprompten.
                             </p>
                             <textarea
                                 value={feedbackText}
@@ -688,7 +705,7 @@ export default function InquiryDetailPage() {
                                 autoFocus
                             />
                             <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
-                                <button onClick={() => setShowFeedbackModal(false)} className="btn btn-secondary">Avbryt</button>
+                                <button onClick={() => { setShowFeedbackModal(false); setFeedbackText('') }} className="btn btn-secondary">Avbryt</button>
                                 <button
                                     onClick={async () => {
                                         if (!feedbackText.trim()) return
@@ -703,20 +720,125 @@ export default function InquiryDetailPage() {
                                                     conversationId: inquiry?.conversation_id || id
                                                 })
                                             })
-                                            if (res.ok) {
-                                                alert('Tilbakemelding sendt!')
-                                                setShowFeedbackModal(false)
-                                                setFeedbackText('')
+                                            const data = await res.json()
+                                            if (res.ok && data.success) {
+                                                setPromptProposal(data)
                                             } else {
-                                                alert('Kunne ikke sende. Prøv igjen.')
+                                                alert(data.error || 'Kunne ikke generere forslag. Prøv igjen.')
                                             }
                                         } catch (e) { alert('Feil: ' + e.message) }
                                         finally { setSendingFeedback(false) }
                                     }}
                                     disabled={sendingFeedback || !feedbackText.trim()}
-                                    style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', color: 'white', border: 'none', padding: '10px 24px', borderRadius: '8px', fontSize: '14px', fontWeight: '500', cursor: sendingFeedback || !feedbackText.trim() ? 'not-allowed' : 'pointer', opacity: sendingFeedback || !feedbackText.trim() ? 0.5 : 1 }}
+                                    style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', color: 'white', border: 'none', padding: '10px 24px', borderRadius: '8px', fontSize: '14px', fontWeight: '500', cursor: sendingFeedback || !feedbackText.trim() ? 'not-allowed' : 'pointer', opacity: sendingFeedback || !feedbackText.trim() ? 0.5 : 1, display: 'flex', alignItems: 'center', gap: '8px' }}
                                 >
-                                    {sendingFeedback ? 'Sender...' : '📤 Send tilbakemelding'}
+                                    {sendingFeedback ? (
+                                        <><div className="spinner" style={{ width: '16px', height: '16px', borderWidth: '2px' }}></div> Analyserer...</>
+                                    ) : 'Foreslå endringer'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* Feedback Modal — Step 2: Review proposed changes */}
+                {showFeedbackModal && promptProposal && (
+                    <div style={{
+                        position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+                        background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)',
+                        display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 2000
+                    }} onClick={() => { setShowFeedbackModal(false); setPromptProposal(null); setFeedbackText('') }}>
+                        <div style={{
+                            background: 'white', borderRadius: '16px',
+                            maxWidth: '680px', width: '90%', maxHeight: '85vh',
+                            display: 'flex', flexDirection: 'column',
+                            boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)',
+                            animation: 'modalPop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)'
+                        }} onClick={e => e.stopPropagation()}>
+                            <div style={{ padding: '24px 28px 16px', borderBottom: '1px solid #e5e7eb', flexShrink: 0 }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <h2 style={{ fontSize: '20px', fontWeight: '700', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        Foreslåtte endringer
+                                    </h2>
+                                    <button onClick={() => { setShowFeedbackModal(false); setPromptProposal(null); setFeedbackText('') }} style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer', color: '#6b7280' }}>✕</button>
+                                </div>
+                                <p style={{ color: '#6b7280', fontSize: '14px', margin: '8px 0 0', lineHeight: '1.5' }}>
+                                    {promptProposal.summary}
+                                </p>
+                            </div>
+
+                            <div style={{ flex: 1, overflow: 'auto', padding: '20px 28px' }}>
+                                <div style={{ marginBottom: '20px' }}>
+                                    <h3 style={{ fontSize: '14px', fontWeight: '600', margin: '0 0 10px', color: '#374151' }}>Endringer:</h3>
+                                    <ul style={{ margin: 0, paddingLeft: '20px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                        {(promptProposal.changes || []).map((change, i) => (
+                                            <li key={i} style={{ fontSize: '14px', lineHeight: '1.5', color: '#4b5563' }}>{change}</li>
+                                        ))}
+                                    </ul>
+                                </div>
+
+                                <details style={{ background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: '10px', padding: '0' }}>
+                                    <summary style={{ padding: '12px 16px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', color: '#6b7280', userSelect: 'none' }}>
+                                        Vis oppdatert systemprompt
+                                    </summary>
+                                    <pre style={{
+                                        padding: '16px', margin: 0,
+                                        fontSize: '12px', lineHeight: '1.6',
+                                        whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+                                        maxHeight: '300px', overflow: 'auto',
+                                        borderTop: '1px solid #e5e7eb',
+                                        color: '#374151', background: '#f9fafb'
+                                    }}>
+                                        {promptProposal.updatedPrompt}
+                                    </pre>
+                                </details>
+                            </div>
+
+                            <div style={{ padding: '16px 28px 24px', borderTop: '1px solid #e5e7eb', display: 'flex', gap: '12px', justifyContent: 'flex-end', flexShrink: 0 }}>
+                                <button
+                                    onClick={() => { setPromptProposal(null) }}
+                                    className="btn btn-secondary"
+                                >
+                                    Tilbake
+                                </button>
+                                <button
+                                    onClick={() => { setShowFeedbackModal(false); setPromptProposal(null); setFeedbackText('') }}
+                                    className="btn btn-secondary"
+                                    style={{ color: '#ef4444' }}
+                                >
+                                    Forkast
+                                </button>
+                                <button
+                                    onClick={async () => {
+                                        setApplyingPrompt(true)
+                                        try {
+                                            const res = await fetch('/api/agent-feedback', {
+                                                method: 'PUT',
+                                                headers: { 'Content-Type': 'application/json' },
+                                                body: JSON.stringify({
+                                                    clientId: promptProposal.clientId,
+                                                    currentPromptId: promptProposal.currentPromptId,
+                                                    currentVersion: promptProposal.currentVersion,
+                                                    updatedPrompt: promptProposal.updatedPrompt,
+                                                    changeReason: feedbackText
+                                                })
+                                            })
+                                            const data = await res.json()
+                                            if (res.ok && data.success) {
+                                                setShowFeedbackModal(false)
+                                                setPromptProposal(null)
+                                                setFeedbackText('')
+                                                alert(`Systemprompten er oppdatert til versjon ${data.newVersion}.`)
+                                            } else {
+                                                alert(data.error || 'Kunne ikke oppdatere. Prøv igjen.')
+                                            }
+                                        } catch (e) { alert('Feil: ' + e.message) }
+                                        finally { setApplyingPrompt(false) }
+                                    }}
+                                    disabled={applyingPrompt}
+                                    style={{ background: '#10b981', color: 'white', border: 'none', padding: '10px 24px', borderRadius: '8px', fontSize: '14px', fontWeight: '500', cursor: applyingPrompt ? 'not-allowed' : 'pointer', opacity: applyingPrompt ? 0.5 : 1 }}
+                                >
+                                    {applyingPrompt ? 'Lagrer...' : 'Godkjenn og aktiver'}
                                 </button>
                             </div>
                         </div>
@@ -740,5 +862,14 @@ export default function InquiryDetailPage() {
                 }
             `}</style>
         </div>
+        </>
+    )
+}
+
+export default function InquiryDetailPage() {
+    return (
+        <Suspense fallback={null}>
+            <InquiryDetailInner />
+        </Suspense>
     )
 }

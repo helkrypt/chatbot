@@ -1,5 +1,5 @@
 import { createClient } from '@/lib/supabase-server'
-import { sendAgentFeedback } from '@/lib/n8n'
+import { anthropic, MODELS } from '@/lib/anthropic'
 
 export async function POST(request) {
     const supabase = await createClient()
@@ -7,74 +7,154 @@ export async function POST(request) {
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 })
 
     try {
-        const { feedback, chatLog, conversationId, replyTo } = await request.json()
+        const { feedback, chatLog, conversationId, clientId } = await request.json()
 
         if (!feedback || !chatLog) {
             return Response.json({ error: 'Feedback og chatlog er påkrevd' }, { status: 400 })
         }
 
-        // Format HTML email
-        const chatHtml = chatLog.map(msg => `
-            <div style="margin-bottom: 12px; padding: 10px; background: ${msg.role === 'user' ? '#f0f0f0' : '#e0f2fe'}; border-radius: 8px;">
-                <div style="font-size: 11px; font-weight: bold; color: #666; margin-bottom: 4px;">
-                    ${msg.role === 'user' ? 'Kunde' : 'AI-Assistent'}
-                </div>
-                <div style="font-size: 14px; white-space: pre-wrap;">${msg.content}</div>
-                <div style="font-size: 10px; color: #999; margin-top: 4px;">
-                    ${new Date(msg.created_at).toLocaleString('no-NO')}
-                </div>
-            </div>
-        `).join('')
+        // Find client_id from conversation if not provided
+        let resolvedClientId = clientId
+        if (!resolvedClientId && conversationId) {
+            const { data: conv } = await supabase
+                .from('conversations')
+                .select('client_id')
+                .eq('id', conversationId)
+                .single()
+            resolvedClientId = conv?.client_id
+        }
 
-        const htmlBody = `
-            <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 700px; margin: 0 auto;">
-                <div style="background: #1a1b2e; color: white; padding: 20px 24px; border-radius: 12px 12px 0 0;">
-                    <h1 style="margin: 0; font-size: 20px;">Tilbakemelding: Endre agentsvar</h1>
-                    <p style="margin: 4px 0 0; font-size: 13px; opacity: 0.7;">Samtale-ID: ${conversationId || 'Ukjent'}</p>
-                </div>
-                <div style="padding: 24px; border: 1px solid #e5e7eb; border-top: none;">
-                    <h2 style="font-size: 16px; color: #1a1b2e; margin: 0 0 12px;">Ønsket endring:</h2>
-                    <div style="background: #fff3cd; border: 1px solid #ffc107; padding: 16px; border-radius: 8px; margin-bottom: 24px; white-space: pre-wrap;">
-                        ${feedback}
-                    </div>
-                    <h2 style="font-size: 16px; color: #1a1b2e; margin: 0 0 12px;">Samtalelogg:</h2>
-                    <div style="max-height: 600px; overflow-y: auto;">
-                        ${chatHtml}
-                    </div>
-                </div>
-                <div style="background: #f8f9fc; padding: 16px 24px; border-radius: 0 0 12px 12px; border: 1px solid #e5e7eb; border-top: none;">
-                    <p style="margin: 0; font-size: 12px; color: #6b7280;">Sendt fra Helkrypt AI dashbordet.</p>
-                </div>
-            </div>
-        `
+        if (!resolvedClientId) {
+            return Response.json({ error: 'Kunne ikke finne klient-ID' }, { status: 400 })
+        }
 
-        const chatMarkdown = chatLog.map(msg =>
-            `### ${msg.role === 'user' ? 'Kunde' : 'AI-Assistent'} (${new Date(msg.created_at).toLocaleString('no-NO')}):\n${msg.content}\n`
-        ).join('\n---\n\n')
+        // Get current active system prompt
+        const { data: promptData } = await supabase
+            .from('system_prompts')
+            .select('id, content, version')
+            .eq('client_id', resolvedClientId)
+            .eq('is_active', true)
+            .single()
 
-        const chatMarkdownBase64 = Buffer.from(chatMarkdown).toString('base64')
+        if (!promptData) {
+            return Response.json({ error: 'Ingen aktiv systemprompt funnet' }, { status: 404 })
+        }
 
-        await sendAgentFeedback({
-            recipient: process.env.ADMIN_EMAIL || 'marius@helkrypt.no',
-            replyTo: replyTo || '',
-            subject: `Tilbakemelding: Endre agentsvar - Samtale ${conversationId ? conversationId.slice(0, 8) : 'Ukjent'}`,
-            html: htmlBody,
-            feedback,
-            conversationId,
-            chatlogMarkdown: chatMarkdown,
-            attachments: [
-                {
-                    filename: `chathistorikk_${conversationId || 'ukjent'}.md`,
-                    content: chatMarkdownBase64,
-                    encoding: 'base64',
-                    mimeType: 'text/markdown'
-                }
-            ]
+        // Format chat log for Claude
+        const chatContext = chatLog.map(msg =>
+            `${msg.role === 'user' ? 'KUNDE' : 'AI-ASSISTENT'}: ${msg.content}`
+        ).join('\n\n')
+
+        // Ask Claude to suggest prompt changes
+        const message = await anthropic.messages.create({
+            model: MODELS.promptGen,
+            max_tokens: 4000,
+            messages: [{
+                role: 'user',
+                content: `Du er en ekspert på å forbedre AI-systemprompts for kundeservice-chatboter.
+
+En operatør har gitt følgende tilbakemelding om at chatboten svarte feil:
+
+**Tilbakemelding fra operatør:**
+${feedback}
+
+**Samtaleloggen der feilen oppstod:**
+${chatContext}
+
+**Gjeldende systemprompt:**
+${promptData.content}
+
+---
+
+Basert på tilbakemeldingen, oppdater systemprompten slik at chatboten håndterer denne typen henvendelser riktig i fremtiden.
+
+VIKTIG:
+- Returner HELE den oppdaterte systemprompten (ikke bare endringene)
+- Behold alt som fungerer bra i den eksisterende prompten
+- Legg til eller endre kun det som er nødvendig for å adressere tilbakemeldingen
+- Hold samme format, språk og tone som originalen
+- Vær presis og konkret i endringene
+
+Svar i følgende JSON-format (og BARE JSON, ingen annen tekst):
+{
+  "summary": "Kort oppsummering av hva som ble endret (1-3 setninger, på norsk)",
+  "changes": ["Endring 1", "Endring 2"],
+  "updatedPrompt": "Den fullstendige oppdaterte systemprompten her"
+}`
+            }]
         })
 
-        return Response.json({ success: true })
+        const responseText = message.content[0].text
+
+        // Parse JSON from Claude's response
+        let parsed
+        try {
+            // Try to extract JSON if wrapped in code blocks
+            const jsonMatch = responseText.match(/```(?:json)?\s*([\s\S]*?)```/) || [null, responseText]
+            parsed = JSON.parse(jsonMatch[1].trim())
+        } catch (e) {
+            console.error('Failed to parse Claude response:', responseText)
+            return Response.json({ error: 'Kunne ikke tolke AI-forslaget' }, { status: 500 })
+        }
+
+        return Response.json({
+            success: true,
+            currentPromptId: promptData.id,
+            currentVersion: promptData.version,
+            clientId: resolvedClientId,
+            summary: parsed.summary,
+            changes: parsed.changes,
+            updatedPrompt: parsed.updatedPrompt
+        })
     } catch (error) {
         console.error('Agent feedback error:', error)
+        return Response.json({ error: error.message }, { status: 500 })
+    }
+}
+
+// Apply the approved prompt change
+export async function PUT(request) {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 })
+
+    try {
+        const { clientId, currentPromptId, currentVersion, updatedPrompt, changeReason } = await request.json()
+
+        if (!clientId || !updatedPrompt) {
+            return Response.json({ error: 'Mangler påkrevde felt' }, { status: 400 })
+        }
+
+        // Deactivate current prompt
+        await supabase
+            .from('system_prompts')
+            .update({ is_active: false, active: false })
+            .eq('id', currentPromptId)
+
+        // Insert new version
+        const { data: newPrompt, error } = await supabase
+            .from('system_prompts')
+            .insert({
+                client_id: clientId,
+                content: updatedPrompt,
+                version: (currentVersion || 1) + 1,
+                is_active: true,
+                active: true,
+                status: 'active',
+                change_reason: changeReason || 'Oppdatert via agent-tilbakemelding',
+                created_by: user.id
+            })
+            .select()
+            .single()
+
+        if (error) {
+            console.error('Failed to save prompt:', error)
+            return Response.json({ error: 'Kunne ikke lagre ny prompt' }, { status: 500 })
+        }
+
+        return Response.json({ success: true, newPromptId: newPrompt.id, newVersion: newPrompt.version })
+    } catch (error) {
+        console.error('Apply prompt error:', error)
         return Response.json({ error: error.message }, { status: 500 })
     }
 }

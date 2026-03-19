@@ -21,6 +21,9 @@ function InquiriesPageInner() {
     const isInspecting = searchParams.get('inspect') === 'true'
     const inspectedClientId = searchParams.get('client_id')
 
+    const inspectSuffix = isInspecting && inspectedClientId
+        ? `?inspect=true&client_id=${inspectedClientId}` : ''
+
     useEffect(() => {
         loadInquiries()
     }, [inspectedClientId])
@@ -134,7 +137,7 @@ function InquiriesPageInner() {
                                     inquiries.filter(inq => inq.status !== 'resolved' || ((userRole === 'admin' || userRole === 'sysadmin') && showResolvedAdmin)).map((inquiry) => (
                                         <tr
                                             key={inquiry.id}
-                                            onClick={() => router.push(`/inquiries/${inquiry.id}`)}
+                                            onClick={() => router.push(`/inquiries/${inquiry.id}${inspectSuffix}`)}
                                             style={{ cursor: 'pointer', transition: 'background-color 0.15s' }}
                                             onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--color-bg)'}
                                             onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}

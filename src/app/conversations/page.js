@@ -23,6 +23,9 @@ function ConversationsPageInner() {
     const isInspecting = searchParams.get('inspect') === 'true'
     const inspectedClientId = searchParams.get('client_id')
 
+    const inspectSuffix = isInspecting && inspectedClientId
+        ? `?inspect=true&client_id=${inspectedClientId}` : ''
+
     useEffect(() => {
         loadConversations()
     }, [inspectedClientId])
@@ -124,7 +127,7 @@ function ConversationsPageInner() {
                                 <div
                                     key={conv.id}
                                     className="conversation-card"
-                                    onClick={() => router.push(`/conversations/${conv.id}`)}
+                                    onClick={() => router.push(`/conversations/${conv.id}${inspectSuffix}`)}
                                 >
                                     <div className="conversation-card-header">
                                         <span className="conversation-card-name">{conv.customer_name || 'Gjest'}</span>
@@ -170,7 +173,7 @@ function ConversationsPageInner() {
                                     paginatedConversations.map((conv) => (
                                         <tr
                                             key={conv.id}
-                                            onClick={() => router.push(`/conversations/${conv.id}`)}
+                                            onClick={() => router.push(`/conversations/${conv.id}${inspectSuffix}`)}
                                             style={{ cursor: 'pointer', transition: 'background-color 0.15s' }}
                                             onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--color-bg)'}
                                             onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
