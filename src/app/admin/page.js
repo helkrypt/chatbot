@@ -94,7 +94,7 @@ export default function AdminPage() {
                     </td>
                     <td>{c.plan}</td>
                     <td style={{ fontSize: '13px', color: 'var(--color-text-muted)' }}>
-                      {c.modules?.join(', ') || '—'}
+                      {Array.isArray(c.modules) && c.modules.length > 0 ? c.modules.join(', ') : '—'}
                     </td>
                     <td>
                       <span style={{
