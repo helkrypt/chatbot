@@ -136,7 +136,14 @@ export async function PUT(request) {
         }
 
         if (!clientId || !updatedPrompt) {
-            return Response.json({ error: 'Mangler påkrevde felt' }, { status: 400 })
+            const debug = {
+                hasClientId: !!clientId,
+                hasUpdatedPrompt: !!updatedPrompt,
+                updatedPromptLength: updatedPrompt?.length ?? 0,
+                currentPromptId: currentPromptId ?? null,
+            }
+            console.error('PUT agent-feedback: mangler felt', debug)
+            return Response.json({ error: `Mangler felt: ${!clientId ? 'clientId' : 'updatedPrompt'}`, debug }, { status: 400 })
         }
 
         // Deactivate current prompt
