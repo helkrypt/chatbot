@@ -43,6 +43,7 @@ function SettingsPageInner() {
     const [installLoading, setInstallLoading] = useState(false)
     const [copied, setCopied] = useState(false)
     const chatEndRef = useRef(null)
+    const [activeTab, setActiveTab] = useState('chatbot')
 
     const supabase = createClient()
 
@@ -312,9 +313,27 @@ function SettingsPageInner() {
                     <h1 className="page-title">Innstillinger</h1>
                 </div>
 
+                <div className="tabs-container">
+                    {[
+                        { id: 'chatbot', label: 'Chatbot' },
+                        { id: 'hours', label: 'Åpningstider' },
+                        { id: 'widget', label: 'Widget' },
+                        { id: 'install', label: 'Installasjon' },
+                    ].map(tab => (
+                        <button
+                            key={tab.id}
+                            className={`tab-button ${activeTab === tab.id ? 'active' : ''}`}
+                            onClick={() => setActiveTab(tab.id)}
+                        >
+                            {tab.label}
+                        </button>
+                    ))}
+                </div>
+
                 <div style={{ maxWidth: '1000px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '32px' }}>
 
                     {/* Opening Hours Card */}
+                    {activeTab === 'hours' && (
                     <div className="card">
                         <div className="card-header">
                             <h2 className="card-title">Administrer Åpningstider</h2>
@@ -405,8 +424,11 @@ function SettingsPageInner() {
                             </div>
                         </div>
                     </div>
+                    )}
 
                     {/* AI Instructions Card */}
+                    {activeTab === 'chatbot' && (
+                    <>
                     <div className="card">
                         <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                             <h2 className="card-title">AI-Instruksjoner</h2>
@@ -502,8 +524,11 @@ function SettingsPageInner() {
                             </div>
                         </div>
                     )}
+                    </>
+                    )}
 
                     {/* Widget Customization Card */}
+                    {activeTab === 'widget' && (
                     <div className="card">
                         <div className="card-header">
                             <h2 className="card-title">Tilpass Chat-Widget</h2>
@@ -645,8 +670,10 @@ function SettingsPageInner() {
                             </div>
                         </div>
                     </div>
+                    )}
 
                     {/* Installation Assistant Card */}
+                    {activeTab === 'install' && (
                     <div className="card">
                         <div className="card-header">
                             <h2 className="card-title">🤖 Installasjonsassistent</h2>
@@ -773,6 +800,7 @@ function SettingsPageInner() {
 
                         </div>
                     </div>
+                    )}
                     <style>{`
                         @keyframes bounce {
                             0%, 80%, 100% { transform: translateY(0); }

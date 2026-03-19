@@ -25,6 +25,9 @@ export default function ClientDashboardPage() {
   const [recentConversations, setRecentConversations] = useState([])
   const [loading, setLoading] = useState(true)
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
+  const [userRole, setUserRole] = useState(null)
+  const [showWelcome, setShowWelcome] = useState(false)
+  const [snippetCopied, setSnippetCopied] = useState(false)
 
   useEffect(() => {
     checkAuth()
@@ -37,6 +40,8 @@ export default function ClientDashboardPage() {
 
     const { data: profile } = await supabase.from('profiles').select('role, client_id').eq('id', user.id).single()
     if (!profile) { router.push('/login'); return }
+
+    setUserRole(profile.role)
 
     // Sysadmin har alltid tilgang (inkludert inspect-modus)
     if (profile.role === 'sysadmin') return
@@ -73,7 +78,18 @@ export default function ClientDashboardPage() {
       supabase.from('conversations').select('*').eq('client_id', clientId).order('updated_at', { ascending: false }).limit(5),
     ])
 
-    setClient(clientRes?.client || null)
+    const clientData = clientRes?.client || null
+    setClient(clientData)
+
+    // Check if we should show welcome modal
+    if (clientData?.onboarding_completed_at) {
+      const completedAt = new Date(clientData.onboarding_completed_at)
+      const hoursSince = (Date.now() - completedAt.getTime()) / (1000 * 60 * 60)
+      const seenKey = `helkrypt_onboarding_seen_${clientId}`
+      if (hoursSince < 24 && !localStorage.getItem(seenKey)) {
+        setShowWelcome(true)
+      }
+    }
 
     // Build chart data
     const statsMap = {}
@@ -146,6 +162,18 @@ export default function ClientDashboardPage() {
     )
   }
 
+  const dismissWelcome = () => {
+    localStorage.setItem(`helkrypt_onboarding_seen_${clientId}`, 'true')
+    setShowWelcome(false)
+  }
+
+  const copySnippet = () => {
+    const snippet = `<script src="https://app.helkrypt.no/widget.js" data-client="${clientId}" defer></script>`
+    navigator.clipboard.writeText(snippet)
+    setSnippetCopied(true)
+    setTimeout(() => setSnippetCopied(false), 2000)
+  }
+
   const totalChats = stats.totalConversations || 1
   const escalatedPercent = ((stats.escalatedConversations / totalChats) * 100).toFixed(1)
   const normalPercent = (100 - parseFloat(escalatedPercent)).toFixed(1)
@@ -200,6 +228,22 @@ export default function ClientDashboardPage() {
           </span>
         </div>
 
+        {/* Action banner */}
+        {(stats.newInquiries + stats.openInquiries) > 0 ? (
+          <div className="action-banner warning">
+            <div className="action-banner-text">
+              <span>{stats.newInquiries + stats.openInquiries} henvendelse{(stats.newInquiries + stats.openInquiries) !== 1 ? 'r' : ''} venter på svar</span>
+            </div>
+            <a href="/inquiries" className="action-banner-link" style={{ color: '#92400e' }}>Se henvendelser &rarr;</a>
+          </div>
+        ) : (
+          <div className="action-banner success">
+            <div className="action-banner-text">
+              <span>Alt ser bra ut! Ingen åpne henvendelser.</span>
+            </div>
+          </div>
+        )}
+
         <div className="stats-grid">
           <div className="stat-card"><div className="stat-label">Totale samtaler i dag</div><div className="stat-value">{stats.conversationsToday}</div></div>
           <div className="stat-card"><div className="stat-label">Nye henvendelser</div><div className="stat-value">{stats.newInquiries}</div></div>
@@ -253,8 +297,41 @@ export default function ClientDashboardPage() {
             </div>
           )}
         </div>
+        {/* Install snippet — visible to admin role only */}
+        {userRole === 'admin' && (
+          <div className="install-snippet-card">
+            <h3 style={{ fontSize: '16px', fontWeight: 600, marginBottom: '4px' }}>Installer chat-widgeten på nettsiden din</h3>
+            <p style={{ fontSize: '13px', color: 'var(--color-text-muted)', marginBottom: '12px' }}>Lim inn denne koden rett før &lt;/body&gt; på nettsiden din.</p>
+            <pre>{`<script src="https://app.helkrypt.no/widget.js"\n  data-client="${clientId}" defer></script>`}</pre>
+            <div className="install-snippet-actions">
+              <button className="btn btn-primary" onClick={copySnippet} style={{ fontSize: '13px', padding: '8px 16px' }}>
+                {snippetCopied ? 'Kopiert!' : 'Kopier kode'}
+              </button>
+              <a href="/settings" style={{ fontSize: '13px', color: 'var(--color-accent)' }}>Trenger du hjelp? Se installasjonsveiledning &rarr;</a>
+            </div>
+          </div>
+        )}
       </main>
       </div>
+
+      {/* Welcome modal for newly onboarded clients */}
+      {showWelcome && (
+        <div className="welcome-modal-overlay" onClick={dismissWelcome}>
+          <div className="welcome-modal" onClick={e => e.stopPropagation()}>
+            <h2>Velkommen til Helkrypt AI!</h2>
+            <p>Her er hva vi har satt opp for deg:</p>
+            <ul className="welcome-checklist">
+              <li><span style={{ color: 'var(--color-success)' }}>&#10003;</span> AI-chatbot — ferdig konfigurert</li>
+              <li><span style={{ color: 'var(--color-success)' }}>&#10003;</span> Åpningstider — sett opp i Innstillinger</li>
+              <li><span style={{ color: 'var(--color-accent)' }}>&#9679;</span> Chat-widget — klar til installasjon</li>
+            </ul>
+            <div className="welcome-modal-actions">
+              <button className="btn btn-primary" onClick={() => { dismissWelcome(); router.push('/settings') }}>Gå til Innstillinger</button>
+              <button className="btn btn-secondary" onClick={dismissWelcome}>Lukk</button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   )
 }

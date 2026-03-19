@@ -111,7 +111,40 @@ function ConversationsPageInner() {
                 </div>
 
                 <div className="card">
-                    <div className="table-container">
+                    {/* Mobile card view */}
+                    <div className="conversation-cards">
+                        {loading ? (
+                            <div className="loading"><div className="spinner"></div></div>
+                        ) : filteredConversations.length === 0 ? (
+                            <div className="empty-state" style={{ padding: '40px 20px' }}>
+                                {searchQuery ? 'Ingen samtaler matcher søket ditt' : 'Ingen samtaler funnet'}
+                            </div>
+                        ) : (
+                            paginatedConversations.map((conv) => (
+                                <div
+                                    key={conv.id}
+                                    className="conversation-card"
+                                    onClick={() => router.push(`/conversations/${conv.id}`)}
+                                >
+                                    <div className="conversation-card-header">
+                                        <span className="conversation-card-name">{conv.customer_name || 'Gjest'}</span>
+                                        <span className="conversation-card-time">
+                                            {new Date(conv.updated_at).toLocaleString('no-NO', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                                        </span>
+                                    </div>
+                                    <div className="conversation-card-meta">
+                                        <span className={`status-badge ${conv.status === 'escalated' ? 'escalated' : 'active'}`} style={{ fontSize: '11px', padding: '2px 8px' }}>
+                                            {conv.status === 'escalated' ? 'Eskalert' : 'Normal'}
+                                        </span>
+                                        {conv.customer_email && <span>{conv.customer_email}</span>}
+                                    </div>
+                                </div>
+                            ))
+                        )}
+                    </div>
+
+                    {/* Desktop table view */}
+                    <div className="table-container conversation-table-desktop">
                         <table>
                             <thead>
                                 <tr>

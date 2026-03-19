@@ -310,9 +310,18 @@ export default function InquiryDetailPage() {
     const getStatusLabel = (status) => {
         switch (status) {
             case 'new': return 'Ny';
-            case 'in_progress': return 'Under arbeid';
+            case 'in_progress': return 'Under behandling';
             case 'resolved': return 'Løst';
             default: return status;
+        }
+    }
+
+    const getStatusBadgeClass = (status) => {
+        switch (status) {
+            case 'new': return 'new';
+            case 'in_progress': return 'in-progress';
+            case 'resolved': return 'active';
+            default: return '';
         }
     }
 
@@ -366,7 +375,7 @@ export default function InquiryDetailPage() {
                             </svg>
                         </button>
                         <h1 className="page-title">Sak #{inquiry.ticket_number || inquiry.id.slice(0, 8).toUpperCase()}</h1>
-                        <span className={`status-badge ${inquiry.status}`}>
+                        <span className={`status-badge ${getStatusBadgeClass(inquiry.status)}`}>
                             {getStatusLabel(inquiry.status)}
                         </span>
                     </div>

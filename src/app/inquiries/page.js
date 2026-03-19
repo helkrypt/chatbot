@@ -55,9 +55,18 @@ function InquiriesPageInner() {
     const getStatusLabel = (status) => {
         switch (status) {
             case 'new': return 'Ny';
-            case 'in_progress': return 'Under arbeid';
+            case 'in_progress': return 'Under behandling';
             case 'resolved': return 'Løst';
             default: return status;
+        }
+    }
+
+    const getStatusBadgeClass = (status) => {
+        switch (status) {
+            case 'new': return 'new';
+            case 'in_progress': return 'in-progress';
+            case 'resolved': return 'active';
+            default: return '';
         }
     }
 
@@ -143,7 +152,7 @@ function InquiriesPageInner() {
                                                 </div>
                                             </td>
                                             <td className="hide-mobile">
-                                                <span className={`status-badge ${inquiry.status}`}>
+                                                <span className={`status-badge ${getStatusBadgeClass(inquiry.status)}`}>
                                                     {getStatusLabel(inquiry.status)}
                                                 </span>
                                             </td>

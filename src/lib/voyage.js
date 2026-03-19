@@ -1,5 +1,5 @@
 const VOYAGE_API_URL = 'https://api.voyageai.com/v1/embeddings'
-export const EMBEDDING_MODEL = 'voyage-3-lite'
+export const EMBEDDING_MODEL = process.env.VOYAGE_MODEL || 'voyage-3-lite'
 
 /**
  * Genererer embedding(s) via Voyage AI REST API.
