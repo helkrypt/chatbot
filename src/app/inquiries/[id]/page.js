@@ -777,21 +777,6 @@ function InquiryDetailInner() {
                                     </ul>
                                 </div>
 
-                                <details style={{ background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: '10px', padding: '0' }}>
-                                    <summary style={{ padding: '12px 16px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', color: '#6b7280', userSelect: 'none' }}>
-                                        Vis oppdatert systemprompt
-                                    </summary>
-                                    <pre style={{
-                                        padding: '16px', margin: 0,
-                                        fontSize: '12px', lineHeight: '1.6',
-                                        whiteSpace: 'pre-wrap', wordBreak: 'break-word',
-                                        maxHeight: '300px', overflow: 'auto',
-                                        borderTop: '1px solid #e5e7eb',
-                                        color: '#374151', background: '#f9fafb'
-                                    }}>
-                                        {promptProposal.updatedPrompt}
-                                    </pre>
-                                </details>
                             </div>
 
                             <div style={{ padding: '16px 28px 24px', borderTop: '1px solid #e5e7eb', display: 'flex', gap: '12px', justifyContent: 'flex-end', flexShrink: 0 }}>

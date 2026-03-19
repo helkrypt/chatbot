@@ -122,17 +122,29 @@ export async function PUT(request) {
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 })
 
     try {
-        const { clientId, currentPromptId, currentVersion, updatedPrompt, changeReason } = await request.json()
+        let { clientId, currentPromptId, currentVersion, updatedPrompt, changeReason } = await request.json()
+
+        // Fallback: resolve clientId from the current prompt if not provided
+        if (!clientId && currentPromptId) {
+            const { data: prompt } = await supabase
+                .from('system_prompts')
+                .select('client_id')
+                .eq('id', currentPromptId)
+                .single()
+            clientId = prompt?.client_id
+        }
 
         if (!clientId || !updatedPrompt) {
             return Response.json({ error: 'Mangler påkrevde felt' }, { status: 400 })
         }
 
         // Deactivate current prompt
-        await supabase
-            .from('system_prompts')
-            .update({ is_active: false, active: false })
-            .eq('id', currentPromptId)
+        if (currentPromptId) {
+            await supabase
+                .from('system_prompts')
+                .update({ is_active: false, active: false })
+                .eq('id', currentPromptId)
+        }
 
         // Insert new version
         const { data: newPrompt, error } = await supabase
