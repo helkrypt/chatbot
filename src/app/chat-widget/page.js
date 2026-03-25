@@ -186,18 +186,30 @@ export default function ChatWidget() {
                     if (convKey) localStorage.setItem(convKey, data.conversationId);
                 }
 
-                const assistantMessage = {
+                setMessages(prev => [...prev, {
                     id: (Date.now() + 1).toString(),
                     role: 'assistant',
                     content: data.response,
                     timestamp: new Date().toISOString()
-                };
-
-                setMessages(prev => [...prev, assistantMessage]);
+                }]);
                 updateLastActivity();
+            } else {
+                // Graceful degradation — never leave the user hanging
+                setMessages(prev => [...prev, {
+                    id: (Date.now() + 1).toString(),
+                    role: 'assistant',
+                    content: 'Noe gikk galt teknisk. Prøv igjen, eller kontakt oss direkte.',
+                    timestamp: new Date().toISOString()
+                }]);
             }
         } catch (error) {
             console.error('Error sending message:', error);
+            setMessages(prev => [...prev, {
+                id: (Date.now() + 1).toString(),
+                role: 'assistant',
+                content: 'Noe gikk galt teknisk. Prøv igjen, eller kontakt oss direkte.',
+                timestamp: new Date().toISOString()
+            }]);
         } finally {
             setIsLoading(false);
         }
@@ -253,21 +265,23 @@ export default function ChatWidget() {
             <div className={styles.header} style={{ background: widgetTheme.primary_color, color: widgetTheme.text_color }}>
                 <div className={styles.headerContent}>
                     <div className={styles.logo}>
-                        <div className={styles.logoIcon} style={{ background: 'rgba(255,255,255,0.15)', color: widgetTheme.text_color }}>💬</div>
+                        <div className={styles.logoIcon} style={{ background: 'rgba(255,255,255,0.15)', color: widgetTheme.text_color }}>
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>
+                        </div>
                         <div>
                             <div className={styles.companyName} style={{ color: widgetTheme.text_color }}>{widgetTheme.header_text || clientName}</div>
                         </div>
                     </div>
                     <div className={styles.headerActions}>
                         <button className={styles.actionBtn} onClick={clearChat} title="Slett historikk">
-                            ↺
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
                         </button>
                         <button
                             className={styles.minimizeBtn}
                             onClick={handleClose}
                             title="Lukk chat"
                         >
-                            ✕
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                         </button>
                     </div>
                 </div>
@@ -327,7 +341,7 @@ export default function ChatWidget() {
                             onClick={() => setPendingFile(null)}
                             title="Fjern bilde"
                         >
-                            ✕
+                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                         </button>
                     </div>
                     <div className={styles.pendingInfo}>
@@ -352,7 +366,10 @@ export default function ChatWidget() {
                     disabled={uploading || isLoading}
                     title="Last opp bilde"
                 >
-                    {uploading ? '⌛' : '📷'}
+                    {uploading
+                        ? <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className={styles.spinIcon}><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+                        : <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+                    }
                 </button>
                 <input
                     type="text"

@@ -90,7 +90,6 @@
 .minimizeBtn {
   background: rgba(44, 62, 80, 0.05);
   border: none;
-  font-size: 18px;
   color: #2C3E50;
   cursor: pointer;
   width: 32px;
@@ -99,7 +98,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.2s;
+  transition: background-color 0.2s, color 0.2s;
 }
 
 .actionBtn:hover,
@@ -214,6 +213,7 @@
   font-size: 11px;
   text-decoration: none;
   text-align: center;
+  transition: color 0.2s;
 }
 
 .viewFull:hover {
@@ -344,7 +344,6 @@
 .attachBtn {
   background: #f1f5f9;
   border: none;
-  font-size: 18px;
   cursor: pointer;
   width: 40px;
   height: 40px;
@@ -359,6 +358,14 @@
 .attachBtn:hover:not(:disabled) {
   background: #e2e8f0;
   color: #1e293b;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.spinIcon {
+  animation: spin 1s linear infinite;
 }
 
 .input {

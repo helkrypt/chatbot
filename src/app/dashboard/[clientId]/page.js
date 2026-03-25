@@ -8,6 +8,73 @@ import Navbar from '@/components/Navbar'
 import InspectBanner from '@/components/InspectBanner'
 import PromptQuotaWidget from '@/components/PromptQuotaWidget'
 
+// Extracted to module level (rerender-no-inline-components)
+function BarChart({ dailyStats }) {
+  const maxVal = Math.max(...dailyStats.map(d => d.count), 1)
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', width: '100%', height: '200px' }}>
+      <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', height: '100%', paddingBottom: '10px', borderBottom: '1px solid var(--color-border)' }}>
+        {dailyStats.map((day, i) => (
+          <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', width: '100%', height: '100%' }}>
+            <div
+              title={`${day.count} samtaler ${day.label}`}
+              style={{
+                width: '50%',
+                height: day.count > 0 ? `${(day.count / maxVal) * 100}%` : '2px',
+                background: day.count > 0 ? '#00c9b7' : '#f3f4f6',
+                borderRadius: '4px 4px 0 0',
+                transition: 'height 0.3s ease',
+                position: 'relative',
+              }}
+            >
+              {day.count > 0 && (
+                <div style={{ position: 'absolute', top: '-25px', left: '50%', transform: 'translateX(-50%)', fontSize: '11px', fontWeight: 'bold', color: 'var(--color-text)' }}>
+                  {day.count}
+                </div>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+        {dailyStats.map((day, i) => (
+          <div key={i} style={{ width: '100%', textAlign: 'center', fontSize: '11px', color: 'var(--color-text-muted)' }}>
+            {day.label.split(' ')[0]}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function PieChart({ stats, totalChats }) {
+  const escalatedPercent = ((stats.escalatedConversations / totalChats) * 100).toFixed(1)
+  const normalPercent = (100 - parseFloat(escalatedPercent)).toFixed(1)
+  const radius = 70
+  const circumference = 2 * Math.PI * radius
+  const escalatedDashOffset = circumference - (circumference * stats.escalatedConversations / totalChats)
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px' }}>
+      <svg width="180" height="180" viewBox="0 0 180 180">
+        <circle cx="90" cy="90" r={radius} fill="none" stroke="var(--color-accent)" strokeWidth="30" />
+        <circle cx="90" cy="90" r={radius} fill="none" stroke="#ef4444" strokeWidth="30" strokeDasharray={circumference} strokeDashoffset={escalatedDashOffset} transform="rotate(-90 90 90)" />
+        <text x="90" y="85" textAnchor="middle" fontSize="24" fontWeight="bold" fill="var(--color-text)">{stats.totalConversations}</text>
+        <text x="90" y="105" textAnchor="middle" fontSize="12" fill="var(--color-text-muted)">samtaler totalt</text>
+      </svg>
+      <div style={{ display: 'flex', gap: '24px', fontSize: '14px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div style={{ width: '12px', height: '12px', borderRadius: '50%', background: 'var(--color-accent)' }}></div>
+          <span>Normal ({normalPercent}%)</span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div style={{ width: '12px', height: '12px', borderRadius: '50%', background: '#ef4444' }}></div>
+          <span>Eskalert ({escalatedPercent}%)</span>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function ClientDashboardPage() {
   const { clientId } = useParams()
   const router = useRouter()
@@ -125,43 +192,6 @@ export default function ClientDashboardPage() {
     setLoading(false)
   }
 
-  const BarChart = () => {
-    const maxVal = Math.max(...dailyStats.map(d => d.count), 1)
-    return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', width: '100%', height: '200px' }}>
-        <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', height: '100%', paddingBottom: '10px', borderBottom: '1px solid var(--color-border)' }}>
-          {dailyStats.map((day, i) => (
-            <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', width: '100%', height: '100%' }}>
-              <div
-                title={`${day.count} samtaler ${day.label}`}
-                style={{
-                  width: '50%',
-                  height: day.count > 0 ? `${(day.count / maxVal) * 100}%` : '2px',
-                  background: day.count > 0 ? '#00c9b7' : '#f3f4f6',
-                  borderRadius: '4px 4px 0 0',
-                  transition: 'height 0.3s ease',
-                  position: 'relative',
-                }}
-              >
-                {day.count > 0 && (
-                  <div style={{ position: 'absolute', top: '-25px', left: '50%', transform: 'translateX(-50%)', fontSize: '11px', fontWeight: 'bold', color: 'var(--color-text)' }}>
-                    {day.count}
-                  </div>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-          {dailyStats.map((day, i) => (
-            <div key={i} style={{ width: '100%', textAlign: 'center', fontSize: '11px', color: 'var(--color-text-muted)' }}>
-              {day.label.split(' ')[0]}
-            </div>
-          ))}
-        </div>
-      </div>
-    )
-  }
 
   const dismissWelcome = () => {
     localStorage.setItem(`helkrypt_onboarding_seen_${clientId}`, 'true')
@@ -176,34 +206,6 @@ export default function ClientDashboardPage() {
   }
 
   const totalChats = stats.totalConversations || 1
-  const escalatedPercent = ((stats.escalatedConversations / totalChats) * 100).toFixed(1)
-  const normalPercent = (100 - parseFloat(escalatedPercent)).toFixed(1)
-
-  const PieChart = () => {
-    const radius = 70
-    const circumference = 2 * Math.PI * radius
-    const escalatedDashOffset = circumference - (circumference * stats.escalatedConversations / totalChats)
-    return (
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px' }}>
-        <svg width="180" height="180" viewBox="0 0 180 180">
-          <circle cx="90" cy="90" r={radius} fill="none" stroke="var(--color-accent)" strokeWidth="30" />
-          <circle cx="90" cy="90" r={radius} fill="none" stroke="#ef4444" strokeWidth="30" strokeDasharray={circumference} strokeDashoffset={escalatedDashOffset} transform="rotate(-90 90 90)" />
-          <text x="90" y="85" textAnchor="middle" fontSize="24" fontWeight="bold" fill="var(--color-text)">{stats.totalConversations}</text>
-          <text x="90" y="105" textAnchor="middle" fontSize="12" fill="var(--color-text-muted)">samtaler totalt</text>
-        </svg>
-        <div style={{ display: 'flex', gap: '24px', fontSize: '14px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <div style={{ width: '12px', height: '12px', borderRadius: '50%', background: 'var(--color-accent)' }}></div>
-            <span>Normal ({normalPercent}%)</span>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <div style={{ width: '12px', height: '12px', borderRadius: '50%', background: '#ef4444' }}></div>
-            <span>Eskalert ({escalatedPercent}%)</span>
-          </div>
-        </div>
-      </div>
-    )
-  }
 
   if (loading) {
     return (
@@ -255,11 +257,11 @@ export default function ClientDashboardPage() {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '24px', marginTop: '24px' }}>
           <div className="card">
             <div className="card-header"><h2 className="card-title">Aktivitet siste 7 dager</h2></div>
-            <div style={{ padding: '32px' }}><BarChart /></div>
+            <div style={{ padding: '32px' }}><BarChart dailyStats={dailyStats} /></div>
           </div>
           <div className="card">
             <div className="card-header"><h2 className="card-title">Fordeling</h2></div>
-            <div style={{ padding: '32px', display: 'flex', justifyContent: 'center' }}><PieChart /></div>
+            <div style={{ padding: '32px', display: 'flex', justifyContent: 'center' }}><PieChart stats={stats} totalChats={totalChats} /></div>
           </div>
         </div>
 
@@ -295,6 +297,9 @@ export default function ClientDashboardPage() {
                 </svg>
               </div>
               <div className="empty-state-title">Ingen samtaler ennå</div>
+              <p style={{ fontSize: '13px', color: 'var(--color-text-muted)', marginTop: '6px' }}>
+                Installer chat-widgeten på nettsiden din for å begynne å ta imot henvendelser.
+              </p>
             </div>
           )}
         </div>
@@ -325,15 +330,18 @@ export default function ClientDashboardPage() {
         <div className="welcome-modal-overlay" onClick={dismissWelcome}>
           <div className="welcome-modal" onClick={e => e.stopPropagation()}>
             <h2>Velkommen til Helkrypt AI!</h2>
-            <p>Her er hva vi har satt opp for deg:</p>
+            <p>Chatboten din er klar. Ett steg gjenstår:</p>
             <ul className="welcome-checklist">
               <li><span style={{ color: 'var(--color-success)' }}>&#10003;</span> AI-chatbot — ferdig konfigurert</li>
               <li><span style={{ color: 'var(--color-success)' }}>&#10003;</span> Åpningstider — sett opp i Innstillinger</li>
-              <li><span style={{ color: 'var(--color-accent)' }}>&#9679;</span> Chat-widget — klar til installasjon</li>
+              <li><span style={{ color: 'var(--color-accent)', fontWeight: 600 }}>&#9679;</span> <strong>Installer chat-widget på nettsiden din</strong></li>
             </ul>
+            <pre style={{ fontSize: '11px', background: 'var(--color-bg-subtle)', padding: '10px', borderRadius: '6px', marginTop: '12px', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>{`<script src="https://app.helkrypt.no/widget.js" data-client="${clientId}" defer></script>`}</pre>
             <div className="welcome-modal-actions">
-              <button className="btn btn-primary" onClick={() => { dismissWelcome(); router.push('/settings') }}>Gå til Innstillinger</button>
-              <button className="btn btn-secondary" onClick={dismissWelcome}>Lukk</button>
+              <button className="btn btn-primary" onClick={() => { copySnippet(); dismissWelcome(); }}>
+                {snippetCopied ? 'Kopiert!' : 'Kopier install-kode'}
+              </button>
+              <button className="btn btn-secondary" onClick={dismissWelcome}>Gjør det senere</button>
             </div>
           </div>
         </div>

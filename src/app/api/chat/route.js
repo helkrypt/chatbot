@@ -80,12 +80,14 @@ export async function POST(request) {
             return NextResponse.json({ error: 'Missing client' }, { status: 400 })
         }
 
-        // Hent klientkonfig
-        const { data: client, error: clientError } = await supabase
-            .from('clients')
-            .select('id, active, webhook_url, chatbot_title')
-            .eq('id', clientId)
-            .single()
+        // Hent klientkonfig og system prompt parallelt (async-parallel)
+        const [
+            { data: client, error: clientError },
+            { data: promptRow, error: promptError },
+        ] = await Promise.all([
+            supabase.from('clients').select('id, active, webhook_url, chatbot_title').eq('id', clientId).single(),
+            supabase.from('system_prompts').select('content').eq('client_id', clientId).eq('active', true).single(),
+        ])
 
         if (clientError || !client) {
             return NextResponse.json({ error: 'Client not found' }, { status: 404 })
@@ -94,14 +96,6 @@ export async function POST(request) {
         if (!client.active) {
             return NextResponse.json({ error: 'Client inactive' }, { status: 403 })
         }
-
-        // Hent system prompt fra DB
-        const { data: promptRow, error: promptError } = await supabase
-            .from('system_prompts')
-            .select('content')
-            .eq('client_id', clientId)
-            .eq('active', true)
-            .single()
 
         if (promptError || !promptRow) {
             return NextResponse.json({ error: 'System prompt not found for client' }, { status: 500 })
@@ -267,7 +261,7 @@ export async function POST(request) {
             : null;
 
         if (!response) {
-            response = 'Beklager, jeg klarte ikke å generere et svar for øyeblikket. Vennligst prøv igjen litt senere.';
+            response = 'Noe gikk galt teknisk. Prøv igjen, eller kontakt oss direkte.';
         }
 
         let escalationData = null;

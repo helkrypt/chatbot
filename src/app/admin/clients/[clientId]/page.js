@@ -6,8 +6,18 @@ import { createClient } from '@/lib/supabase'
 import Sidebar from '@/components/Sidebar'
 import Link from 'next/link'
 
-const AVAILABLE_MODULES = [
-]
+const AVAILABLE_MODULES = []
+
+// Extracted to module level (rerender-no-inline-components)
+function BackButton() {
+  return (
+    <Link href="/admin" className="btn btn-secondary" style={{ padding: '8px' }}>
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <path d="M19 12H5M12 19l-7-7 7-7" />
+      </svg>
+    </Link>
+  )
+}
 
 export default function AdminClientPage() {
   const { clientId } = useParams()
@@ -218,14 +228,6 @@ export default function AdminClientPage() {
     setRetriggering(false)
   }
 
-  const BackButton = () => (
-    <Link href="/admin" className="btn btn-secondary" style={{ padding: '8px' }}>
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-        <path d="M19 12H5M12 19l-7-7 7-7" />
-      </svg>
-    </Link>
-  )
-
   if (loading || (!isNew && !form)) {
     return (
       <div className="app-container">
@@ -332,7 +334,7 @@ export default function AdminClientPage() {
                   <input
                     className="form-input"
                     value={form.orgnr || ''}
-                    onChange={e => setForm({ ...form, orgnr: e.target.value })}
+                    onChange={e => setForm(prev => ({ ...prev, orgnr: e.target.value }))}
                     placeholder="123 456 789"
                     maxLength={11}
                   />
@@ -368,12 +370,12 @@ export default function AdminClientPage() {
 
               <div className="form-group">
                 <label className="form-label">Fakturaadresse</label>
-                <input className="form-input" value={form.invoice_address || ''} onChange={e => setForm({ ...form, invoice_address: e.target.value })} placeholder="Storgata 1, 0150 Oslo" />
+                <input className="form-input" value={form.invoice_address || ''} onChange={e => setForm(prev => ({ ...prev, invoice_address: e.target.value }))} placeholder="Storgata 1, 0150 Oslo" />
               </div>
 
               <div className="form-group">
                 <label className="form-label">Nettsted</label>
-                <input className="form-input" value={form.domain || ''} onChange={e => setForm({ ...form, domain: e.target.value })} placeholder="https://butikk.no" />
+                <input className="form-input" value={form.domain || ''} onChange={e => setForm(prev => ({ ...prev, domain: e.target.value }))} placeholder="https://butikk.no" />
               </div>
 
               <div style={{ borderTop: '1px solid var(--color-border)', paddingTop: '14px', marginTop: '2px' }}>
@@ -381,16 +383,16 @@ export default function AdminClientPage() {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                   <div className="form-group" style={{ margin: 0 }}>
                     <label className="form-label">Navn</label>
-                    <input className="form-input" value={form.contact_name || ''} onChange={e => setForm({ ...form, contact_name: e.target.value })} placeholder="Ola Nordmann" />
+                    <input className="form-input" value={form.contact_name || ''} onChange={e => setForm(prev => ({ ...prev, contact_name: e.target.value }))} placeholder="Ola Nordmann" />
                   </div>
                   <div style={{ display: 'flex', gap: '10px' }}>
                     <div className="form-group" style={{ flex: 1, margin: 0 }}>
                       <label className="form-label">Telefon</label>
-                      <input className="form-input" type="tel" value={form.contact_phone || ''} onChange={e => setForm({ ...form, contact_phone: e.target.value })} placeholder="+47 400 00 000" />
+                      <input className="form-input" type="tel" value={form.contact_phone || ''} onChange={e => setForm(prev => ({ ...prev, contact_phone: e.target.value }))} placeholder="+47 400 00 000" />
                     </div>
                     <div className="form-group" style={{ flex: 2, margin: 0 }}>
                       <label className="form-label">E-post <span style={{ color: 'var(--color-text-muted)', fontWeight: 400 }}>(brukes som eskalerings-epost)</span></label>
-                      <input className="form-input" type="email" value={form.contact_email || ''} onChange={e => setForm({ ...form, contact_email: e.target.value })} placeholder="ola@bedrift.no" />
+                      <input className="form-input" type="email" value={form.contact_email || ''} onChange={e => setForm(prev => ({ ...prev, contact_email: e.target.value }))} placeholder="ola@bedrift.no" />
                     </div>
                   </div>
                 </div>
@@ -403,7 +405,7 @@ export default function AdminClientPage() {
 
               <div className="form-group">
                 <label className="form-label">Pakke</label>
-                <select className="form-input" value={form.plan || 'standard'} onChange={e => setForm({ ...form, plan: e.target.value })}>
+                <select className="form-input" value={form.plan || 'standard'} onChange={e => setForm(prev => ({ ...prev, plan: e.target.value }))}>
                   <option value="standard">Standard</option>
                   <option value="profesjonell">Profesjonell</option>
                   <option value="enterprise">Enterprise</option>
@@ -445,16 +447,16 @@ export default function AdminClientPage() {
 
               <div className="form-group">
                 <label className="form-label">Eskalerings-epost <span style={{ color: 'var(--color-text-muted)', fontWeight: 400 }}>(standard: kontaktpersonens e-post)</span></label>
-                <input className="form-input" type="email" value={form.escalation_email || ''} onChange={e => setForm({ ...form, escalation_email: e.target.value })} placeholder={form.contact_email || ''} />
+                <input className="form-input" type="email" value={form.escalation_email || ''} onChange={e => setForm(prev => ({ ...prev, escalation_email: e.target.value }))} placeholder={form.contact_email || ''} />
               </div>
 
               <div className="form-group">
                 <label className="form-label">Chatbot-tittel</label>
-                <input className="form-input" value={form.chatbot_title || ''} onChange={e => setForm({ ...form, chatbot_title: e.target.value })} />
+                <input className="form-input" value={form.chatbot_title || ''} onChange={e => setForm(prev => ({ ...prev, chatbot_title: e.target.value }))} />
               </div>
 
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <input type="checkbox" id="active" checked={form.active !== false} onChange={e => setForm({ ...form, active: e.target.checked })} />
+                <input type="checkbox" id="active" checked={form.active !== false} onChange={e => setForm(prev => ({ ...prev, active: e.target.checked }))} />
                 <label htmlFor="active" style={{ fontSize: '14px' }}>Aktiv</label>
               </div>
 
