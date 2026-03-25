@@ -45,10 +45,35 @@ function SettingsPageInner() {
     const chatEndRef = useRef(null)
     const [activeTab, setActiveTab] = useState('chatbot')
 
+    // Voice agent
+    const [voiceEnabled, setVoiceEnabled] = useState(false)
+    const [voicePhone, setVoicePhone] = useState('')
+    const [voiceStep, setVoiceStep] = useState(0) // 0=uactive, 1=velg type, 2=provisjonering, 3=ferdig
+    const [voiceNumberType, setVoiceNumberType] = useState('new')
+    const [provisioningVoice, setProvisioningVoice] = useState(false)
+
+    // Social channels
+    const [channelConfigs, setChannelConfigs] = useState([])
+    const [togglingChannel, setTogglingChannel] = useState(null)
+
+    // Booking
+    const [bookingConfig, setBookingConfig] = useState(null)
+    const [bookingLoading, setBookingLoading] = useState(false)
+    const [newService, setNewService] = useState({ name: '', duration_minutes: 60 })
+    const [bookingHours, setBookingHours] = useState({ open: '08:00', close: '17:00' })
+    const [savingBooking, setSavingBooking] = useState(false)
+
     const supabase = createClient()
 
     useEffect(() => {
         loadData()
+        // Vis feedback etter OAuth-redirect
+        const booking = searchParams.get('booking')
+        if (booking === 'connected') {
+            setActiveTab('booking')
+        } else if (booking === 'error') {
+            alert('Tilkobling til Google Kalender feilet. Prøv igjen.')
+        }
     }, [])
 
     const loadData = async () => {
@@ -108,10 +133,52 @@ function SettingsPageInner() {
                 if (client?.config?.widget_theme) {
                     setWidgetTheme({ ...DEFAULT_THEME, ...client.config.widget_theme })
                 }
+                if (client?.config?.voice_enabled) {
+                    setVoiceEnabled(true)
+                    setVoicePhone(client.config.voice_phone_number || '')
+                }
             }
         }
 
+        // Fetch booking config
+        if (effectiveClientId) {
+            const res = await fetch(`/api/booking/config?clientId=${effectiveClientId}`)
+            if (res.ok) {
+                const { config } = await res.json()
+                setBookingConfig(config)
+                if (config?.business_hours) {
+                    setBookingHours(config.business_hours)
+                }
+            }
+        }
+
+        // Fetch channel configs
+        if (effectiveClientId) {
+            const { data: channelData } = await supabase
+                .from('channel_configs')
+                .select('*')
+                .eq('client_id', effectiveClientId)
+                .order('channel')
+            if (channelData) setChannelConfigs(channelData)
+        }
+
         setLoading(false)
+    }
+
+    const handleToggleChannel = async (config) => {
+        setTogglingChannel(config.id)
+        const { error } = await supabase
+            .from('channel_configs')
+            .update({ active: !config.active })
+            .eq('id', config.id)
+        if (!error) {
+            setChannelConfigs(prev => prev.map(c => c.id === config.id ? { ...c, active: !c.active } : c))
+        }
+        setTogglingChannel(null)
+    }
+
+    const handleConnectChannel = (channel) => {
+        window.location.href = `/api/channels/connect?clientId=${clientId}&channel=${channel}`
     }
 
     const handleGeneratePrompt = async () => {
@@ -265,6 +332,83 @@ function SettingsPageInner() {
         setSavingTheme(false)
     }
 
+    const handleAddService = async () => {
+        if (!newService.name.trim()) return
+        const updated = [...(bookingConfig?.services || []), { ...newService, name: newService.name.trim() }]
+        setSavingBooking(true)
+        const res = await fetch('/api/booking/config', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ clientId, services: updated }),
+        })
+        if (res.ok) {
+            const { config } = await res.json()
+            setBookingConfig(config)
+            setNewService({ name: '', duration_minutes: 60 })
+        }
+        setSavingBooking(false)
+    }
+
+    const handleRemoveService = async (idx) => {
+        const updated = (bookingConfig?.services || []).filter((_, i) => i !== idx)
+        setSavingBooking(true)
+        const res = await fetch('/api/booking/config', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ clientId, services: updated }),
+        })
+        if (res.ok) {
+            const { config } = await res.json()
+            setBookingConfig(config)
+        }
+        setSavingBooking(false)
+    }
+
+    const handleSaveBookingHours = async () => {
+        setSavingBooking(true)
+        const res = await fetch('/api/booking/config', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ clientId, business_hours: bookingHours }),
+        })
+        if (res.ok) {
+            const { config } = await res.json()
+            setBookingConfig(config)
+        }
+        setSavingBooking(false)
+    }
+
+    const handleDisconnectBooking = async () => {
+        if (!confirm('Er du sikker på at du vil koble fra booking?')) return
+        setBookingLoading(true)
+        await fetch(`/api/booking/config?clientId=${clientId}`, { method: 'DELETE' })
+        setBookingConfig(null)
+        setBookingLoading(false)
+    }
+
+    const handleVoiceProvision = async () => {
+        setProvisioningVoice(true)
+        try {
+            const res = await fetch('/api/voice/provision', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ clientId, numberType: voiceNumberType }),
+            })
+            const data = await res.json()
+            if (res.ok) {
+                setVoiceEnabled(true)
+                setVoicePhone(data.phoneNumber)
+                setVoiceStep(3)
+            } else {
+                alert('Feil ved aktivering: ' + data.error)
+            }
+        } catch (err) {
+            alert('Nettverksfeil: ' + err.message)
+        } finally {
+            setProvisioningVoice(false)
+        }
+    }
+
     const copySnippet = () => {
         navigator.clipboard.writeText(SNIPPET)
         setCopied(true)
@@ -317,6 +461,9 @@ function SettingsPageInner() {
                     {[
                         { id: 'chatbot', label: 'Chatbot' },
                         { id: 'hours', label: 'Åpningstider' },
+                        { id: 'booking', label: 'Smart Booking' },
+                        { id: 'channels', label: 'Kanaler' },
+                        { id: 'voice', label: 'Telefonagent' },
                         { id: 'widget', label: 'Widget' },
                         { id: 'install', label: 'Installasjon' },
                     ].map(tab => (
@@ -426,6 +573,125 @@ function SettingsPageInner() {
                     </div>
                     )}
 
+                    {/* Smart Booking Card */}
+                    {activeTab === 'booking' && (
+                    <div className="card">
+                        <div className="card-header">
+                            <h2 className="card-title">Smart Booking</h2>
+                        </div>
+                        <div style={{ padding: '24px' }}>
+                            {!bookingConfig ? (
+                                <>
+                                    <p style={{ marginBottom: '20px', color: 'var(--color-text-muted)', fontSize: '14px' }}>
+                                        La chatboten booke timer direkte for kundene dine. Kobles til Google Kalender — kunden sier &quot;Jeg vil ha time fredag&quot; og chatboten sjekker og booker automatisk.
+                                    </p>
+                                    <a
+                                        href={`/api/booking/google/connect?clientId=${clientId}`}
+                                        className="btn btn-primary"
+                                        style={{ display: 'inline-block', textDecoration: 'none' }}
+                                    >
+                                        Koble til Google Kalender
+                                    </a>
+                                </>
+                            ) : (
+                                <>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '24px', padding: '12px 16px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '8px' }}>
+                                        <span style={{ fontSize: '18px' }}>✅</span>
+                                        <span style={{ fontSize: '14px', fontWeight: '500', color: '#166534' }}>
+                                            Koblet til Google Kalender
+                                        </span>
+                                        <button
+                                            onClick={handleDisconnectBooking}
+                                            disabled={bookingLoading}
+                                            style={{ marginLeft: 'auto', color: '#dc2626', background: 'none', border: 'none', cursor: 'pointer', fontSize: '13px' }}
+                                        >
+                                            Koble fra
+                                        </button>
+                                    </div>
+
+                                    {/* Tjenester */}
+                                    <div style={{ marginBottom: '28px' }}>
+                                        <h3 style={{ fontSize: '14px', fontWeight: '600', marginBottom: '12px' }}>Tjenester chatboten kan booke</h3>
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '12px' }}>
+                                            {(bookingConfig.services || []).map((s, i) => (
+                                                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 14px', background: 'var(--color-bg-subtle)', borderRadius: '8px', border: '1px solid var(--color-border)', fontSize: '14px' }}>
+                                                    <span>{s.name}</span>
+                                                    <span style={{ color: 'var(--color-text-muted)' }}>{s.duration_minutes} min</span>
+                                                    <button
+                                                        onClick={() => handleRemoveService(i)}
+                                                        style={{ color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer', padding: '4px', marginLeft: '8px' }}
+                                                    >✕</button>
+                                                </div>
+                                            ))}
+                                            {(bookingConfig.services || []).length === 0 && (
+                                                <p style={{ fontSize: '13px', color: 'var(--color-text-muted)', fontStyle: 'italic' }}>Ingen tjenester lagt til ennå.</p>
+                                            )}
+                                        </div>
+                                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                            <input
+                                                type="text"
+                                                className="input-field"
+                                                placeholder="Tjenestenavn (f.eks. Klipp)"
+                                                value={newService.name}
+                                                onChange={e => setNewService({ ...newService, name: e.target.value })}
+                                                style={{ flex: 1 }}
+                                            />
+                                            <input
+                                                type="number"
+                                                className="input-field"
+                                                placeholder="Min"
+                                                value={newService.duration_minutes}
+                                                onChange={e => setNewService({ ...newService, duration_minutes: parseInt(e.target.value) || 60 })}
+                                                style={{ width: '80px' }}
+                                            />
+                                            <button
+                                                onClick={handleAddService}
+                                                disabled={savingBooking || !newService.name.trim()}
+                                                className="btn btn-secondary"
+                                                style={{ whiteSpace: 'nowrap' }}
+                                            >
+                                                + Legg til
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    {/* Åpningstider for booking */}
+                                    <div>
+                                        <h3 style={{ fontSize: '14px', fontWeight: '600', marginBottom: '12px' }}>Åpningstider for booking</h3>
+                                        <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-end', flexWrap: 'wrap' }}>
+                                            <div>
+                                                <label style={{ display: 'block', fontSize: '12px', color: '#6b7280', marginBottom: '4px' }}>Åpner</label>
+                                                <input
+                                                    type="time"
+                                                    className="input-field"
+                                                    value={bookingHours.open}
+                                                    onChange={e => setBookingHours({ ...bookingHours, open: e.target.value })}
+                                                />
+                                            </div>
+                                            <div>
+                                                <label style={{ display: 'block', fontSize: '12px', color: '#6b7280', marginBottom: '4px' }}>Stenger</label>
+                                                <input
+                                                    type="time"
+                                                    className="input-field"
+                                                    value={bookingHours.close}
+                                                    onChange={e => setBookingHours({ ...bookingHours, close: e.target.value })}
+                                                />
+                                            </div>
+                                            <button
+                                                onClick={handleSaveBookingHours}
+                                                disabled={savingBooking}
+                                                className="btn btn-primary"
+                                            >
+                                                {savingBooking ? 'Lagrer...' : 'Lagre'}
+                                            </button>
+                                        </div>
+                                    </div>
+                                </>
+                            )}
+                        </div>
+                    </div>
+                    )}
+
                     {/* AI Instructions Card */}
                     {activeTab === 'chatbot' && (
                     <>
@@ -525,6 +791,65 @@ function SettingsPageInner() {
                         </div>
                     )}
                     </>
+                    )}
+
+                    {/* Kanaler Card */}
+                    {activeTab === 'channels' && (
+                    <div className="card">
+                        <div className="card-header">
+                            <h2 className="card-title">Sosiale kanaler</h2>
+                            <p style={{ fontSize: '14px', color: 'var(--color-text-muted)', marginTop: '4px' }}>
+                                Koble chatboten til Facebook Messenger og Instagram DM. Alle meldinger samles i dashbordet.
+                            </p>
+                        </div>
+                        <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                            {[
+                                { key: 'messenger', label: 'Facebook Messenger', icon: '📘', desc: '3,4 mill. norske brukere · 490 kr/mnd', btnLabel: configs => configs.length ? 'Legg til side' : 'Koble til Facebook' },
+                                { key: 'instagram', label: 'Instagram DM', icon: '📸', desc: '2,8 mill. norske brukere · inkludert i 490 kr/mnd', btnLabel: configs => configs.length ? 'Legg til konto' : 'Koble til Instagram' },
+                            ].map(({ key, label, icon, desc, btnLabel }) => {
+                                const configs = channelConfigs.filter(c => c.channel === key)
+                                return (
+                                    <div key={key} style={{ border: '1px solid #e5e7eb', borderRadius: '12px', padding: '20px' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: configs.length ? '16px' : 0 }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                                <span style={{ fontSize: '28px' }}>{icon}</span>
+                                                <div>
+                                                    <div style={{ fontWeight: '600', fontSize: '15px' }}>{label}</div>
+                                                    <div style={{ fontSize: '13px', color: 'var(--color-text-muted)' }}>{desc}</div>
+                                                </div>
+                                            </div>
+                                            <button className="btn btn-secondary" onClick={() => handleConnectChannel(key)} style={{ fontSize: '13px' }}>
+                                                {btnLabel(configs)}
+                                            </button>
+                                        </div>
+                                        {configs.length > 0 && (
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                                {configs.map(config => (
+                                                    <div key={config.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: '#f9fafb', borderRadius: '8px', border: '1px solid #f3f4f6' }}>
+                                                        <div>
+                                                            <div style={{ fontWeight: '500', fontSize: '14px' }}>{config.page_name}</div>
+                                                            <div style={{ fontSize: '12px', color: 'var(--color-text-muted)' }}>ID: {config.external_id}</div>
+                                                        </div>
+                                                        <button
+                                                            className={`btn ${config.active ? 'btn-primary' : 'btn-secondary'}`}
+                                                            style={{ fontSize: '12px', minWidth: '80px' }}
+                                                            disabled={togglingChannel === config.id}
+                                                            onClick={() => handleToggleChannel(config)}
+                                                        >
+                                                            {togglingChannel === config.id ? '...' : config.active ? '✓ Aktiv' : 'Aktiver'}
+                                                        </button>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                )
+                            })}
+                            <p style={{ fontSize: '12px', color: 'var(--color-text-muted)' }}>
+                                Klikk knappen og logg inn med Facebook. Du velger deretter hvilken side som skal bruke chatboten. Det tar 2 minutter.
+                            </p>
+                        </div>
+                    </div>
                     )}
 
                     {/* Widget Customization Card */}
@@ -801,6 +1126,118 @@ function SettingsPageInner() {
                         </div>
                     </div>
                     )}
+                    {/* Telefonagent fane */}
+                    {activeTab === 'voice' && (
+                    <div className="card">
+                        <div className="card-header">
+                            <h2 className="card-title">AI Telefonagent</h2>
+                        </div>
+                        <div style={{ padding: '24px' }}>
+                        {voiceEnabled ? (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '16px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '10px' }}>
+                                    <div style={{ fontSize: '24px' }}>📞</div>
+                                    <div>
+                                        <div style={{ fontWeight: '600', fontSize: '15px', color: '#15803d' }}>Telefonagent er aktiv</div>
+                                        <div style={{ fontSize: '14px', color: '#166534', marginTop: '2px' }}>
+                                            Nummer: <strong>{voicePhone || '—'}</strong>
+                                        </div>
+                                    </div>
+                                </div>
+                                <p style={{ fontSize: '14px', color: 'var(--color-text-muted)' }}>
+                                    AI-agenten svarer automatisk på innkommende anrop. Alle samtaler vises i samtale-oversikten med et 📞 ikon.
+                                </p>
+                            </div>
+                        ) : voiceStep === 0 ? (
+                            <div>
+                                <div style={{ background: 'var(--color-bg-subtle)', borderRadius: '12px', padding: '24px', border: '1px solid var(--color-border)' }}>
+                                    <div style={{ fontSize: '32px', marginBottom: '12px' }}>📞</div>
+                                    <p style={{ fontSize: '15px', color: 'var(--color-text)', marginBottom: '16px', lineHeight: '1.6' }}>
+                                        En AI-assistent som svarer på telefonen for deg — 24 timer i døgnet, 7 dager i uken.
+                                    </p>
+                                    <ul style={{ listStyle: 'none', padding: 0, display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '20px' }}>
+                                        {['Svarer på norsk', 'Bruker din kunnskap og systemprompt', 'Du ser alle samtaler i dashbordet', 'Ingen binding — avslutt når du vil'].map(point => (
+                                            <li key={point} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px' }}>
+                                                <span style={{ color: 'var(--color-success)', fontWeight: 'bold' }}>✓</span> {point}
+                                            </li>
+                                        ))}
+                                    </ul>
+                                    <div style={{ fontSize: '13px', color: 'var(--color-text-muted)', marginBottom: '20px' }}>
+                                        4 990 kr/mnd · 1 000 min inkl. · 4,00 kr/min overpris
+                                    </div>
+                                    <button className="btn btn-primary" onClick={() => setVoiceStep(1)}>
+                                        Aktiver AI Telefonagent →
+                                    </button>
+                                </div>
+                            </div>
+                        ) : voiceStep === 1 ? (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                                <h3 style={{ fontSize: '15px', fontWeight: '600', margin: 0 }}>Steg 1: Velg nummerkonfigurasjon</h3>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                                    {[
+                                        { value: 'new', label: 'Nytt norsk nummer', desc: 'Enklest — vi setter opp alt automatisk med et nytt +47-nummer.' },
+                                        { value: 'forward', label: 'Videresend fra ditt eksisterende nummer', desc: 'Krever at du setter opp viderekobling i telefonselskapet ditt.' },
+                                    ].map(opt => (
+                                        <label key={opt.value} style={{
+                                            display: 'flex', gap: '12px', alignItems: 'flex-start', padding: '14px 16px',
+                                            border: `2px solid ${voiceNumberType === opt.value ? 'var(--color-accent)' : 'var(--color-border)'}`,
+                                            borderRadius: '10px', cursor: 'pointer',
+                                            background: voiceNumberType === opt.value ? 'var(--color-bg-subtle)' : 'transparent',
+                                        }}>
+                                            <input type="radio" name="numberType" value={opt.value}
+                                                checked={voiceNumberType === opt.value}
+                                                onChange={() => setVoiceNumberType(opt.value)}
+                                                style={{ marginTop: '2px' }}
+                                            />
+                                            <div>
+                                                <div style={{ fontWeight: '600', fontSize: '14px' }}>{opt.label}</div>
+                                                <div style={{ fontSize: '13px', color: 'var(--color-text-muted)', marginTop: '2px' }}>{opt.desc}</div>
+                                            </div>
+                                        </label>
+                                    ))}
+                                </div>
+                                {voiceNumberType === 'forward' && (
+                                    <div style={{ padding: '14px', background: '#fef9c3', border: '1px solid #fde047', borderRadius: '8px', fontSize: '13px', color: '#713f12' }}>
+                                        <strong>Merk:</strong> Sett opp betinget viderekobling i telefonselskapet ditt til nummeret du får tildelt her.
+                                    </div>
+                                )}
+                                <div style={{ display: 'flex', gap: '10px' }}>
+                                    <button className="btn btn-secondary" onClick={() => setVoiceStep(0)}>Tilbake</button>
+                                    <button className="btn btn-primary" onClick={() => setVoiceStep(2)}>Neste →</button>
+                                </div>
+                            </div>
+                        ) : voiceStep === 2 ? (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                                <h3 style={{ fontSize: '15px', fontWeight: '600', margin: 0 }}>Steg 2: Bekreft og aktiver</h3>
+                                <div style={{ padding: '16px', background: 'var(--color-bg-subtle)', borderRadius: '10px', fontSize: '14px', lineHeight: '1.7' }}>
+                                    <div><strong>Konfigurasjon:</strong> {voiceNumberType === 'new' ? 'Nytt norsk nummer' : 'Viderekobling fra eget nummer'}</div>
+                                    <div style={{ marginTop: '8px', color: 'var(--color-text-muted)', fontSize: '13px' }}>
+                                        Klikk "Aktiver" for å opprette AI-telefonagenten. Nummeret er klart innen ett minutt.
+                                    </div>
+                                </div>
+                                <div style={{ display: 'flex', gap: '10px' }}>
+                                    <button className="btn btn-secondary" onClick={() => setVoiceStep(1)} disabled={provisioningVoice}>Tilbake</button>
+                                    <button className="btn btn-primary" onClick={handleVoiceProvision} disabled={provisioningVoice}>
+                                        {provisioningVoice ? 'Aktiverer...' : 'Aktiver nå'}
+                                    </button>
+                                </div>
+                            </div>
+                        ) : voiceStep === 3 ? (
+                            <div style={{ padding: '20px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '10px', textAlign: 'center' }}>
+                                <div style={{ fontSize: '32px', marginBottom: '8px' }}>✅</div>
+                                <div style={{ fontWeight: '600', fontSize: '16px', color: '#15803d' }}>Telefonagenten er aktiv!</div>
+                                {voicePhone && (
+                                    <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#166534', marginTop: '8px' }}>{voicePhone}</div>
+                                )}
+                                <p style={{ fontSize: '13px', color: '#166534', marginTop: '8px' }}>
+                                    Test gjerne agenten ved å ringe nummeret nå.
+                                </p>
+                            </div>
+                        ) : null}
+                        </div>
+                    </div>
+                    )}
+
                     <style>{`
                         @keyframes bounce {
                             0%, 80%, 100% { transform: translateY(0); }

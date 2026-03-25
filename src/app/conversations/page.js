@@ -10,6 +10,14 @@ import { useRouter, useSearchParams } from 'next/navigation'
 
 const ITEMS_PER_PAGE = 10
 
+const CHANNEL_ICONS = {
+    web:       { icon: '💬', label: 'Nettside' },
+    messenger: { icon: '📘', label: 'Messenger' },
+    instagram: { icon: '📸', label: 'Instagram' },
+    whatsapp:  { icon: '📱', label: 'WhatsApp' },
+    phone:     { icon: '📞', label: 'Telefon' },
+}
+
 function ConversationsPageInner() {
     const router = useRouter()
     const searchParams = useSearchParams()
@@ -139,6 +147,9 @@ function ConversationsPageInner() {
                                         <span className={`status-badge ${conv.status === 'escalated' ? 'escalated' : 'active'}`} style={{ fontSize: '11px', padding: '2px 8px' }}>
                                             {conv.status === 'escalated' ? 'Eskalert' : 'Normal'}
                                         </span>
+                                        <span title={CHANNEL_ICONS[conv.channel]?.label || 'Nettside'}>
+                                            {CHANNEL_ICONS[conv.channel]?.icon || '💬'}
+                                        </span>
                                         {conv.customer_email && <span>{conv.customer_email}</span>}
                                     </div>
                                 </div>
@@ -155,17 +166,18 @@ function ConversationsPageInner() {
                                     <th className="hide-mobile">E-post</th>
                                     <th className="hide-mobile">Telefon</th>
                                     <th>Status</th>
+                                    <th className="hide-mobile" style={{ width: '60px' }}>Kanal</th>
                                     <th className="hide-mobile">Sist oppdatert</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {loading ? (
                                     <tr>
-                                        <td colSpan="5" className="loading">Laster...</td>
+                                        <td colSpan="6" className="loading">Laster...</td>
                                     </tr>
                                 ) : filteredConversations.length === 0 ? (
                                     <tr>
-                                        <td colSpan="5" className="empty-state">
+                                        <td colSpan="6" className="empty-state">
                                             {searchQuery ? 'Ingen samtaler matcher søket ditt' : 'Ingen samtaler funnet'}
                                         </td>
                                     </tr>
@@ -187,6 +199,11 @@ function ConversationsPageInner() {
                                             <td>
                                                 <span className={`status-badge ${conv.status === 'escalated' ? 'escalated' : 'active'}`}>
                                                     {conv.status === 'escalated' ? 'Eskalert' : 'Normal'}
+                                                </span>
+                                            </td>
+                                            <td className="hide-mobile" style={{ textAlign: 'center', fontSize: '18px' }}>
+                                                <span title={CHANNEL_ICONS[conv.channel]?.label || 'Nettside'}>
+                                                    {CHANNEL_ICONS[conv.channel]?.icon || '💬'}
                                                 </span>
                                             </td>
                                             <td className="hide-mobile">

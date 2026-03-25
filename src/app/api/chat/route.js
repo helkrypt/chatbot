@@ -4,6 +4,7 @@ import { embed } from '@/lib/voyage';
 import { createClient } from '@supabase/supabase-js';
 import { notifyClientWebhook } from '@/lib/webhook';
 import { sendEmail, notifySysadmin } from '@/lib/n8n';
+import { getBookingConfig, checkAvailability, bookAppointment } from '@/lib/booking';
 import { Ratelimit } from '@upstash/ratelimit';
 import { Redis } from '@upstash/redis';
 
@@ -242,12 +243,46 @@ export async function POST(request) {
             }
         ];
 
+        // Booking tools (kun hvis klienten har aktiv booking-konfig)
+        const bookingConfig = await getBookingConfig(clientId).catch(() => null)
+        const bookingTools = bookingConfig ? [
+            {
+                name: 'check_availability',
+                description: 'Sjekk ledige timer i kalenderen for en bestemt dato',
+                input_schema: {
+                    type: 'object',
+                    properties: {
+                        date: { type: 'string', description: 'Dato i format YYYY-MM-DD' },
+                        service_type: { type: 'string', description: 'Type tjeneste (valgfri)' },
+                    },
+                    required: ['date'],
+                },
+            },
+            {
+                name: 'book_appointment',
+                description: 'Book en time for kunden',
+                input_schema: {
+                    type: 'object',
+                    properties: {
+                        date: { type: 'string', description: 'Dato i format YYYY-MM-DD' },
+                        time: { type: 'string', description: 'Tid i format HH:MM' },
+                        service_type: { type: 'string' },
+                        customer_name: { type: 'string' },
+                        customer_phone: { type: 'string' },
+                        customer_email: { type: 'string' },
+                    },
+                    required: ['date', 'time', 'customer_name'],
+                },
+            },
+        ] : []
+
         // Kall Claude Haiku
         const claudeResponse = await anthropic.messages.create({
             model: MODELS.chatbot,
             system: dynamicSystemPrompt,
             messages: apiMessages,
             max_tokens: 2048,
+            ...(bookingTools.length > 0 ? { tools: bookingTools } : {}),
         });
 
         console.log('Claude response details:', {
@@ -256,8 +291,59 @@ export async function POST(request) {
             model: claudeResponse.model,
         });
 
-        let response = claudeResponse.content?.[0]?.type === 'text'
-            ? claudeResponse.content[0].text
+        // Håndter booking tool_use
+        let finalClaudeResponse = claudeResponse
+        if (claudeResponse.stop_reason === 'tool_use' && bookingTools.length > 0) {
+            const toolUseBlock = claudeResponse.content.find(b => b.type === 'tool_use')
+            if (toolUseBlock) {
+                let toolResult = {}
+                try {
+                    if (toolUseBlock.name === 'check_availability') {
+                        toolResult = await checkAvailability({
+                            clientId,
+                            date: toolUseBlock.input.date,
+                            serviceType: toolUseBlock.input.service_type,
+                        })
+                    } else if (toolUseBlock.name === 'book_appointment') {
+                        toolResult = await bookAppointment({
+                            clientId,
+                            date: toolUseBlock.input.date,
+                            time: toolUseBlock.input.time,
+                            serviceType: toolUseBlock.input.service_type,
+                            customerName: toolUseBlock.input.customer_name,
+                            customerPhone: toolUseBlock.input.customer_phone,
+                            customerEmail: toolUseBlock.input.customer_email,
+                        })
+                    }
+                } catch (toolErr) {
+                    console.error('Booking tool feilet:', toolErr)
+                    toolResult = { error: 'Booking-tjenesten er midlertidig utilgjengelig' }
+                }
+
+                // Send tool_result tilbake for endelig svar
+                finalClaudeResponse = await anthropic.messages.create({
+                    model: MODELS.chatbot,
+                    system: dynamicSystemPrompt,
+                    messages: [
+                        ...apiMessages,
+                        { role: 'assistant', content: claudeResponse.content },
+                        {
+                            role: 'user',
+                            content: [{
+                                type: 'tool_result',
+                                tool_use_id: toolUseBlock.id,
+                                content: JSON.stringify(toolResult),
+                            }],
+                        },
+                    ],
+                    max_tokens: 2048,
+                    tools: bookingTools,
+                })
+            }
+        }
+
+        let response = finalClaudeResponse.content?.[0]?.type === 'text'
+            ? finalClaudeResponse.content[0].text
             : null;
 
         if (!response) {
