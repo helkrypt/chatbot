@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { embed } from '@/lib/voyage';
+import { embed } from '@/lib/embeddings';
 import { notifySysadmin } from '@/lib/n8n';
 
 const WEBHOOK_SECRET = process.env.ONBOARDING_WEBHOOK_SECRET;

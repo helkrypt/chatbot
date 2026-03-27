@@ -1,6 +1,6 @@
 import { createAdminClient } from '@/lib/supabase-admin'
 import { generateSystemPrompt } from '@/lib/generateSystemPrompt'
-import { embed } from '@/lib/voyage'
+import { embed } from '@/lib/embeddings'
 import { sendWelcomeEmail } from '@/lib/email'
 
 export const maxDuration = 60

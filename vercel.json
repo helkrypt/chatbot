@@ -1,4 +1,12 @@
 {
+    "functions": {
+        "src/app/api/onboarding/start/route.js": {
+            "maxDuration": 60
+        },
+        "src/app/api/internal/generate-prompt/route.js": {
+            "maxDuration": 30
+        }
+    },
     "crons": [
         {
             "path": "/api/reports/weekly",
@@ -7,6 +15,10 @@
         {
             "path": "/api/reports/monthly",
             "schedule": "0 7 1 * *"
+        },
+        {
+            "path": "/api/cron/reset-prompt-quota",
+            "schedule": "0 0 1 * *"
         }
     ]
 }

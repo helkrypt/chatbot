@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { anthropic, MODELS } from '@/lib/anthropic';
-import { embed } from '@/lib/voyage';
+import { embed } from '@/lib/embeddings';
 import { createClient } from '@supabase/supabase-js';
 import { notifyClientWebhook } from '@/lib/webhook';
 import { sendEmail, notifySysadmin } from '@/lib/n8n';
@@ -207,7 +207,7 @@ export async function POST(request) {
 
         // RAG: hent relevante knowledge_chunks basert på brukerens melding
         let ragContext = '';
-        if (message && process.env.VOYAGE_API_KEY) {
+        if (message && process.env.OPENAI_API_KEY) {
             try {
                 const [queryEmbedding] = await embed(message, 'query');
                 const { data: chunks } = await supabase.rpc('match_chunks', {

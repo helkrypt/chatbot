@@ -1,5 +1,5 @@
 import { anthropic, MODELS } from '@/lib/anthropic'
-import { embed } from '@/lib/voyage'
+import { embed } from '@/lib/embeddings'
 import { createAdminClient } from '@/lib/supabase-admin'
 
 export const runtime = 'edge'
@@ -43,7 +43,7 @@ export async function GET(request) {
 
       let ragContext = ''
       const lastUserMsg = data.transcript?.at(-1)?.content || ''
-      if (lastUserMsg && process.env.VOYAGE_API_KEY) {
+      if (lastUserMsg && process.env.OPENAI_API_KEY) {
         try {
           const [queryEmbedding] = await embed(lastUserMsg, 'query')
           const { data: chunks } = await admin.rpc('match_chunks', {

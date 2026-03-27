@@ -5,6 +5,14 @@ import { anthropic, MODELS } from '@/lib/anthropic'
 import { logAudit } from '@/lib/audit'
 import { notifySysadmin } from '@/lib/n8n'
 
+// Antall inkluderte prompt-endringer per plan per måned
+const PLAN_QUOTA = {
+  standard:     1,
+  profesjonell: 3,
+  enterprise:   10,
+  bedrift:      10,
+}
+
 async function getAuthUser() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -28,6 +36,28 @@ export async function POST(request) {
 
     if (!instruction?.trim()) {
       return NextResponse.json({ error: 'instruction er påkrevd' }, { status: 400 })
+    }
+
+    // ── Kvote-sjekk (sysadmin er unntatt) ──────────────────────────────────
+    let quotaInfo = null
+    if (user.role !== 'sysadmin') {
+      const { data: client } = await admin.from('clients').select('plan').eq('id', clientId).single()
+      const plan = client?.plan || 'standard'
+      const { data: quota, error: quotaErr } = await admin.rpc('get_or_create_prompt_quota', {
+        p_client_id: clientId,
+        p_plan: plan,
+      })
+      if (!quotaErr && quota) {
+        const remaining = quota.changes_included - quota.changes_used
+        quotaInfo = { plan, used: quota.changes_used, included: quota.changes_included, remaining }
+        if (remaining <= 0) {
+          return NextResponse.json({
+            error: 'Kvote for systemprompt-endringer er brukt opp denne måneden.',
+            quota: quotaInfo,
+            overage_price_nok: plan === 'standard' ? 149 : plan === 'profesjonell' ? 99 : 79,
+          }, { status: 402 })
+        }
+      }
     }
 
     // Hent nåværende aktiv prompt
@@ -129,13 +159,24 @@ ${instruction}`
       return NextResponse.json({ error: insertError.message }, { status: 500 })
     }
 
+    // ── Inkrementer kvote etter vellykket generering ────────────────────────
+    let updatedQuota = null
+    if (user.role !== 'sysadmin') {
+      const { data: client } = await admin.from('clients').select('plan').eq('id', clientId).single()
+      const { data: q } = await admin.rpc('increment_prompt_quota', {
+        p_client_id: clientId,
+        p_plan: client?.plan || 'standard',
+      })
+      if (q?.[0]) updatedQuota = q[0]
+    }
+
     await logAudit({
       clientId,
       userId: user.id,
       action: 'prompt.generate',
       entityType: 'system_prompt',
       entityId: newPromptRow.id,
-      details: { instruction, version: newVersion, status: newStatus },
+      details: { instruction, version: newVersion, status: newStatus, isOverage: updatedQuota?.is_overage || false },
     })
 
     return NextResponse.json({
@@ -144,6 +185,12 @@ ${instruction}`
       newPrompt: newPromptContent,
       version: newVersion,
       status: newStatus,
+      quota: updatedQuota ? {
+        used: updatedQuota.changes_used,
+        included: updatedQuota.changes_included,
+        remaining: Math.max(0, updatedQuota.changes_included - updatedQuota.changes_used),
+        isOverage: updatedQuota.is_overage,
+      } : null,
     })
 
   } catch (error) {
