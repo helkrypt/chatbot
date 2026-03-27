@@ -99,7 +99,7 @@ export async function POST(req) {
   })
 
   // 7. Generer og lagre embeddings (ikke-blokkerende ved feil)
-  if (websiteContent && process.env.VOYAGE_API_KEY) {
+  if (websiteContent && process.env.OPENAI_API_KEY) {
     try {
       const chunks = chunkText(websiteContent, 500)
       const embeddings = await embed(chunks, 'document')
